@@ -1019,3 +1019,530 @@ not change.
 - `workspace/conversation-logs/.git` was **removed this session** (per user) so the logs are NOT
   tracked as their own nested repo; when the `workspace/` repo is created, keep conversation-logs
   out of tracking (e.g. add it to `.gitignore`).
+
+---
+
+## Session 13 (2026-08-18) — SCALE-UP: download 1000 snMC-seq BAMs for donor H1930001 (CX45)
+
+**Task (from user):** scale up the snMC-seq phasing by increasing sequencing depth. Download
+**additional** snMC-seq BAMs for **donor-1 (H1930001) only** so the donor has a **total of 1000**
+snMC-seq BAMs. Constraints: **same donor** (H1930001), **preferably same brain region** (CX45,
+matching the existing 10), and **same ancestry** (satisfied automatically — all cells come from
+the single donor H1930001, so ancestry is identical by construction). Download in batch, and
+**move each BAM to permanent storage on the `workspace/` mount as soon as it is downloaded and
+integrity-verified**. Run in a **disconnect-safe tmux session**; use the node's compute fully but
+carefully (don't disrupt the VSCode-server). This runs IN PARALLEL with the snM3C-seq phasing
+task (see the snM3C-seq log).
+
+### Selection (decided this session)
+- Pool = manifest rows matching `_H1930001_CX45_` and NOT `_3C_` → **11,797 snMC-seq cells**
+  across 4 CX45 sub-regions (A38 3022, CaB 3007, NAC 2892, A25 2876). Whole-pool tar mean 125.7 MB.
+- **Target set = the 1000 LARGEST tars** (max coverage per read — same "largest-N" strategy used
+  for the original 10 in S6 and for snM3C in its S2). Top-1000 totals **183.6 GiB** of tars
+  (mean 188 MB, smallest-in-top-1000 = 168 MB). Sub-region spread of the top-1000:
+  CaB 391, NAC 299, A25 290, A38 20 (sub-region is irrelevant for germline SNP phasing).
+- The **10 already-present** CX45 BAMs (S6, NAC+CaB) are within this top-1000, so we download the
+  remaining **990** and end with exactly 1000 in `Science-snMC-seq/H1930001/`.
+
+### URL / layout (snMC-seq path — NOT the 3C path)
+- `https://data.nemoarchive.org/biccn/grant/u01_ecker/ecker/epigenome/sncell/mCseq/human/processed/align/<cell>.final.bam.tar`
+- tar extracts to `<cell>.final/<cell>.final.bam`. Manifest col1 = bare cell name, col2 = tar
+  size (bytes), col3 = tar md5.
+
+### Download design — `workspace/shell-scripts/download_snMC-seq_bulk.sh` (this session)
+Adapted from `download_snM3C-seq_CX45.sh`, generalised + hardened for a 1000-file batch:
+- **Producer**: `P_DL` concurrent `curl` downloads into `/tmp` → verify tar **size AND md5** vs
+  manifest → `tar -xf` → locate BAM → `samtools quickcheck` → record the extracted BAM's own md5
+  → mark `.ready` (or `.fail`).
+- **Consumer**: a POOL of `P_WR` parallel mount-writers. Each `cp`s a ready BAM to
+  `Science-snMC-seq/H1930001/`, then verifies **size + md5** with a generous FUSE settle and
+  **re-copies on failure** (md5 mismatch/0-byte/partial are all caught and retried). On success it
+  deletes the `/tmp` staged BAM (bounds `/tmp` use) and appends the cell to an **on-mount progress
+  file** `Science-snMC-seq/H1930001/_bulk_download_progress.tsv`.
+- **Resumable**: on (re)start, cells already in the progress file OR already present as a non-empty
+  `<cell>.final.bam` on the mount are skipped — a killed/disconnected job resumes, never restarts.
+- FUSE lessons applied: stage in `/tmp`, verify size+md5 both ways with settle+retry, never trust
+  an immediate `ls`, `cp` (not tmpfile+rename) to the mount.
+
+### Resource plan
+- Network cap observed ~40 MB/s aggregate → `P_DL=6` keeps the pipe full.
+- Mount write is the real bottleneck (~8 MB/s single-stream in prior sessions). Using `P_WR=3`
+  parallel verified writers to try to exceed that; md5 verification makes parallel writes safe.
+- Rough wall-time: download ~1.5 h; mount write dominates (183 GiB) — single-stream ~6.5 h, so
+  target ~3–6 h total depending on whether iRODS aggregate write scales with parallel writers.
+- Low CPU (curl/md5/tar); leaves the node free for the concurrent snM3C phasing task.
+
+### CHECKPOINTS
+- [ ] script written + launched in tmux session `snmc-dl` (setsid nohup, nice -n 10)
+- [ ] downloading (progress in /tmp/snmc_dl/download.log + on-mount progress file)
+- [ ] 990 new BAMs verified on mount → 1000 total in H1930001/
+
+### CHECKPOINT 1 (2026-08-18 ~17:03) — download LAUNCHED & running
+- Script `download_snMC-seq_bulk.sh` launched in disconnect-safe tmux session **`snmc-dl`**
+  (via `nohup nice -n 10`, so it survives both client disconnect and tmux death).
+- Selection confirmed at runtime: **target=1000, 10 already present, 990 to download**.
+- Producer P_DL=6 / consumer P_WR=3. First parallel mount-writes verify OK (size+md5) — the
+  parallel-writer path is healthy on this FUSE mount.
+- Monitoring: `/tmp/snmc_dl/download.log` (per-cell) + `/tmp/snmc_dl/runner.log`. Resume authority
+  = on-mount marker dir `Science-snMC-seq/H1930001/.bulk_dl_done/` (10 seeded + 1 per verified DL).
+- **Transient DL failures expected & recoverable:** at the ~40 MB/s server cap, 6 streams
+  occasionally stall; curl retries 3× then marks the cell failed (NOT done). Observed ~1 hard-fail
+  early. **Mop-up plan:** after the run ends, re-run the SAME script (it's resumable — skips
+  done-marked/present cells) until `.bulk_dl_done/` reaches 1000. Then the folder holds exactly
+  1000 H1930001 CX45 snMC-seq BAMs (same donor ⇒ same ancestry).
+- To attach & watch:
+  `bash workspace/shell-scripts/tmux_attach.sh` → then `tmux attach -t snmc-dl`, or
+  `tail -f /tmp/snmc_dl/download.log`.
+
+### CHECKPOINT 2 (2026-08-19 15:50) — download was killed at 985/1000; mop-up running, full pipeline chained
+
+**The CHECKPOINT-1 download did NOT finish.** `download_snMC-seq_bulk.sh` was killed at
+**22:02 on 2026-08-18** — no `ALL_FINISHED` line, no `=== DONE` summary, just an abrupt stop
+mid-`COPY->mount` (the session/container went away). State found this session:
+
+| | |
+|---|---|
+| BAMs on mount, `Science-snMC-seq/H1930001/` | **985** (target 1000) |
+| done-markers in `.bulk_dl_done/` | 971 → **14 BAMs landed and verified but never got their marker** |
+| `/tmp/snmc_dl/staged` leftovers | 4 `.ready` BAMs never copied, **13 stale `.fail` markers** |
+| `/tmp/snmc_dl/tars` | empty |
+
+The 13 `.fail` markers mattered: `produce_one()` has an early
+`[[ -e "$STAGE/$name.fail" ]] && SKIP`, so a bare re-run would have **skipped exactly the cells
+still missing** and exited claiming nothing to do. So the staging dir was wiped clean
+(`staged/` + `tars/`) rather than reasoned about — 15 cells × ~200 MB is cheap to refetch — and
+the run-1 logs were kept as `download.run1.log` / `runner.run1.log`.
+
+**Mop-up relaunched 15:36:05** (`setsid nohup nice -n 10`, from the `/tmp` copy of the script, not
+the mount). It confirmed the resume logic works as designed:
+- marker seeding from BAMs present on the mount took **~8.5 min** for 985 files (FUSE `touch` is
+  slow) and produced `already present on mount (seeded as done): 985` — so the 14 missing markers
+  were self-healing, exactly as intended.
+- `target=1000  already-done=985  to-download=15`
+- by 15:51: **12/15 fetched and verified**. `Remote I/O error` on `cp` to the mount appeared twice
+  and the writer pool's `recopy … (verify failed, attempt 1)` path recovered both — the
+  size+md5-verify-and-recopy design is doing its job on this flaky mount.
+
+### NEW: the rest of the pipeline is now chained to run unattended
+Two new scripts (both in `shell-scripts/`, both run from `/tmp` copies):
+
+**`chain_snMC_download_then_phase.sh`** (launched 15:50:09, pid 221527, log `/tmp/snmc_dl/chain.log`)
+1. waits for the running download to exit;
+2. if `.bulk_dl_done/` < 1000, relaunches `download_snMC-seq_bulk.sh` (resumable/idempotent) —
+   up to **8 mop-up rounds**, because at the ~40 MB/s NeMO cap a few of the 6 curl streams stall
+   and get marked failed each round;
+3. on reaching 1000, `exec`s the phasing pipeline. Resume authority stays the on-mount marker dir,
+   so the chain survives being killed.
+
+**`run_snMC-seq_1000cell_phasing.sh`** — the deep-coverage rerun of this experiment for
+**H1930001 at 1000 cells** instead of 10 (same donor ⇒ same ancestry by construction). The
+question it answers: does ~100× more pseudo-bulk coverage rescue the poor phasing yield seen at
+10 cells (**bsgenova 359 / naive 215** phased SNPs for this donor)?
+
+- **Stage 1** copy + `samtools index` each per-cell BAM, in **batches of 100** (P_CP=6 mount reads,
+  P_IDX=8 index jobs), merging each batch and then deleting that batch's per-cell copies — this
+  bounds `/tmp` instead of holding ~190 GB of per-cell BAMs plus the merge at once.
+- **Stage 2** final merge of the 10 batch BAMs → `H1930001_CX45_snMCseq_1000cells_merged.bam` +`.bai`.
+- **Stage 3/4** bsgenova and the naive caller vs `hg38_chrL.fa` (`-P 32`).
+- **Stage 5** HapCUT2 4-step preprocessing of both callsets.
+- **Stage 6** HapCUT2 phasing in **standard short-read mode — deliberately NO `--hic 1`**: this is
+  WGBS-like snMC-seq, not 3C. (`--hic 1` is the snM3C-seq experiment's variable.)
+- **Stage 7** publish + block/phased-SNP summary.
+
+Design notes / decisions worth recording:
+- **Inputs are already `@HD SO:coordinate`** (456 `@SQ`, identical to `hg38_chrL.fa`) — verified on
+  a sample BAM. So no re-sort is needed here, unlike the snM3C `.3C.sorted.bam` files, which were
+  queryname-sorted and destroyed the first two snM3C runs.
+- **Read counts come from `samtools idxstats`** (index metadata, instant) rather than
+  `samtools view -c` (a full pass) — at 1000 files × ~200 MB, and again on a ~190 GB merge, a full
+  pass per file would dominate the runtime. Batch and final merges are both verified this way.
+- **Per-cell `.bai` stay in `/tmp`.** 1000 FUSE writes would be slow and flaky, and the 10-cell run
+  likewise left no per-cell `.bai` on the mount.
+- **The ~190 GB merged BAM is NOT pushed to the mount** (`PUBLISH_BIG_BAM=0` by default): the 6 GB
+  snM3C merges already failed there with `Remote I/O error`, and this file is reproducible from the
+  1000 published per-cell BAMs. Only its `.bai`, the callsets, the preprocessed VCFs and the phased
+  output are published. Set `PUBLISH_BIG_BAM=1` to attempt the full copy.
+- All FUSE hardening from `run_snM3C-seq_phasing.sh` v3 is carried over: code runs from
+  `/tmp/snm3c_local/`, all compute in `/tmp`, stage markers depend only on `/tmp` artifacts, every
+  mount copy retries 3× with backoff and is **non-fatal**, and Stage 7 re-publishes at the end.
+
+### CHECKPOINTS
+- [x] script written + launched (setsid nohup, nice -n 10)
+- [x] downloading — 985/1000 at the run-1 kill, mop-up running (12/15 refetched by 15:51)
+- [ ] 990 new BAMs verified on mount → 1000 total in H1930001/
+- [ ] Stage 1  index 1000 per-cell BAMs + batch merges
+- [ ] Stage 2  1000-cell pseudo-bulk merged BAM + .bai
+- [ ] Stage 3  bsgenova callset
+- [ ] Stage 4  naive callset
+- [ ] Stage 5  preprocessed VCFs (2)
+- [ ] Stage 6  HapCUT2 phased output (2) — standard mode
+- [ ] compare 1000-cell vs 10-cell phased-SNP yield for H1930001
+
+### CHECKPOINT 3 (2026-08-19 16:01) — ROOT CAUSE of the stalled mount writes: irodsfs needs a full read to settle
+
+The mop-up got to **998/1000** and then two cells stalled — `..._A25_1_P3-5-K20-D10` and
+`..._NAC_1_P1-4-M16-A8` — failing all 3 recopy attempts every round with
+`cp: cannot create regular file …: Remote I/O error` and `verify N size lag`. Before assuming
+flakiness, the mount was measured directly. **This is the most useful infrastructure finding of
+the project so far and it invalidates size-based copy verification.**
+
+**Test 1 — is it a quota?** No. A fresh 200 MB `dd` into the same directory succeeded at 5.9 MB/s,
+and a small file wrote fine. Existing files were all readable. So new-file creation is not blocked.
+
+**Test 2 — does the mount report the truth right after a write?** No. Copying a known
+**205163551 B** BAM (md5 `c10f561b…`):
+
+| read issued | reported size | md5 |
+|---|---|---|
+| immediately after `cp` returned 0 | **209000510** (wrong, inflated) | `76624cbe…` **wrong bytes** |
+| after that first full read | **205163551** (correct) | `c10f561b…` **correct** |
+
+Repeated with a settle loop: **attempt 1 mismatched, attempt 2 matched on both size and md5.**
+
+**So: `cp` returns before the iRODS object is committed, a read issued too early returns wrong
+size AND wrong content, and *performing a full read is itself what settles the object*.**
+
+**That turned a transient hiccup into a permanent stall.** `write_one()`'s verify loop was:
+
+```bash
+[[ "$(stat -c%s "$dst")" == "$ssize" ]] || { log "verify $attempt size lag"; continue; }
+[[ "$(md5sum "$dst")" == "$want" ]] && { vok=1; break; }
+```
+
+It **short-circuited on the `stat`** — so when the size came back wrong it `continue`d and the
+md5 (the full read that would have settled the object) never ran. Every attempt re-`stat`ed a
+never-settled object and lagged again, through all 3 recopies of all 3 mop-up rounds. The retry
+logic could not converge by construction. Nothing was wrong with those two cells.
+
+**Fixes applied:**
+- `download_snMC-seq_bulk.sh` — verify loop now computes the **md5 unconditionally** (6 attempts):
+  the read *is* the fix. Logs `verify N lag … (size=… want=…)`.
+- `run_snMC-seq_1000cell_phasing.sh` — `cpv()` upgraded from size-only to **md5-verify** for
+  anything under `CPV_MD5_MAX` (2 GB), re-reading until it settles.
+- **NEW `verify_published_artifacts.sh`** — md5-compares every published artifact against the
+  `/tmp` original and re-copies mismatches, for both experiments. This is the authoritative
+  content check for the snM3C-seq v3 outputs, whose `cpv()` verifies by size only (v3 was already
+  running and a running bash must not be edited — that is what killed v2).
+- Chain patched to clear only stale `.fail` markers between rounds and **keep verified `.ready`
+  staging**, so a retry re-attempts just the mount write instead of re-downloading a ~200 MB tar.
+
+Chain relaunched 16:01:10 (pid 236047) with the patched download script; the 2 remaining cells are
+still staged and md5-verified in `/tmp`, so only the mount write is retried.
+
+**Wider implication:** every earlier `WARN copy-verify size lag` in these logs — including the
+snM3C-seq v2 merged-BAM copies — is explained by this. A size check that passes is not proof of a
+good copy on this mount, and a size check that fails is not proof of a bad one.
+
+### CHECKPOINT 4 (2026-08-19 16:09) — **1000/1000 BAMs on the mount**; phasing pipeline launched
+
+The last 2 cells were not flaky and not fixable by retrying: **their iRODS object names were
+poisoned.** Diagnosis, in order:
+
+1. `ls` says the path does not exist.
+2. A **5-byte** `echo > <that exact path>` fails with `Remote I/O error`.
+3. The **same source file** copies fine to a *different* name in the **same directory**
+   (verified 205163551 B, correct md5).
+4. Writing to a temp name in that directory succeeds, but `mv` of it onto the target name fails
+   with `Remote I/O error`.
+
+So the catalog holds an unusable entry for those two data-object names — invisible to `ls`,
+un-writable, un-renamable-onto, and `rm -f` reports success without clearing it. Almost certainly
+the residue of the run-1 partial writes. No icommands (`irm`, `iadmin`) are installed in this
+container, so the entry cannot be purged from here. **Retrying was never going to converge** — the
+patched verify loop made that legible by reporting `size=0` (nothing written) instead of a bogus
+inflated size.
+
+**Resolution — publish those two under `<cell>.recopy.final.bam`:**
+- still matches the `*.final.bam` glob every downstream step uses, so the pipeline picks them up
+  with no special-casing;
+- keeps the manifest cell name inside the filename, so provenance is intact;
+- **preserves the intended top-1000-largest selection exactly** — no substitution of other cells
+  was needed, N=1000 is the originally chosen set.
+Both were copied and **md5+size verified** (each matched on settle attempt 2, as expected from
+CHECKPOINT 3), then their done-markers were set manually.
+
+```
+markers               = 1000
+*.final.bam           = 1000   (998 normal + 2 *.recopy.final.bam)
+staged remainder      = 0
+```
+
+Also checked, since the same partial-write-then-delete pattern hit the snM3C-seq merged BAMs:
+**`merged-BAM/H1930002…bam` and `H1930004…bam` names are HEALTHY** (probe write succeeded), so
+snM3C v3's Stage 7 will be able to publish them. The poisoning is per-object, not directory-wide.
+
+**`chain_snMC_download_then_phase.sh` saw 1000/1000 at 16:09:47 and `exec`ed
+`run_snMC-seq_1000cell_phasing.sh`** (pid 245810). Now running:
+index 1000 BAMs → batch merges (100/batch) → 1000-cell pseudo-bulk merge → bsgenova + naive
+→ HapCUT2 preprocessing → HapCUT2 phasing (standard mode) → publish.
+Monitoring `/tmp/snmc_phase/progress.log`.
+
+### CHECKPOINTS
+- [x] script written + launched (setsid nohup, nice -n 10)
+- [x] downloading — 985/1000 at the run-1 kill, mopped up in staged rounds
+- [x] **1000 BAMs verified on mount in H1930001/** (md5-verified; 2 published as `*.recopy.final.bam`)
+- [ ] Stage 1  index 1000 per-cell BAMs + batch merges
+- [ ] Stage 2  1000-cell pseudo-bulk merged BAM + .bai
+- [ ] Stage 3  bsgenova callset
+- [ ] Stage 4  naive callset
+- [ ] Stage 5  preprocessed VCFs (2)
+- [ ] Stage 6  HapCUT2 phased output (2) — standard mode
+- [ ] compare 1000-cell vs 10-cell phased-SNP yield for H1930001
+
+### CHECKPOINT 5 (2026-08-19 16:13) — Stage 1 hardened after a transient mount READ error; relaunched
+
+Minutes into Stage 1 the pipeline logged:
+
+```
+cp: error reading '…/HBA_201030_…_P1-4-M16-A8.recopy.final.bam': Remote I/O error
+CP_IN_FAIL HBA_201030_…_P1-4-M16-A8.recopy.final.bam
+```
+
+**The file is fine** — re-read immediately afterwards it returned md5 `c10f561b…`, matching the
+original exactly. So this mount fails **reads** transiently under concurrency (P_CP=6), not just
+writes. Note this was one of the two `.recopy` files, but the name is incidental: any of the 1000
+could hit this.
+
+The error exposed **two real defects in Stage 1**, both of which would have quietly shrunk the
+experiment rather than failing it:
+
+1. **`fetch_one()` had no retry.** One `cp` per cell, and on failure just a log line — so a
+   transient read error silently dropped that cell from the pseudo-bulk.
+2. **A short batch was still merged, and Stage 2 ran regardless of Stage 1's outcome.** The
+   expected read count `breads` is summed over *the cells that actually staged*, so the batch's own
+   `got -eq breads` check passes and the batch is marked `BATCH_OK`. Stage 1 would report
+   `indexed_cells=999` and decline to set its marker — but nothing consumed that fact, so Stage 2
+   would have gone on to build a **999-cell pseudo-bulk and label it `1000cells`**, with the loss
+   visible only in one mid-log line. This is exactly the failure mode as the snM3C v1 run
+   (a stage proceeding on inputs the previous stage never actually produced), just quieter.
+
+**Fixes (all three in `run_snMC-seq_1000cell_phasing.sh`, republished):**
+- `fetch_one()` retries **4×** with backoff and verifies the staged copy's **size against the mount
+  source** each time, re-copying partials; only then `CP_IN_FAIL`.
+- Before merging, a batch must have `staged == indexed == cells-in-batch`, else
+  `BATCH_FAIL <tag> INCOMPLETE staged=… indexed=… want=…` and **no merge, no `.reads` marker** —
+  so a short batch is never accepted and is retried on the next run.
+- **Stage 2 now hard-blocks unless Stage 1 is marked complete**, printing why and exiting 1:
+  it refuses to build a truncated pseudo-bulk and label it `1000cells`.
+
+Relaunched 16:13:26 (pid 248305). Already-staged cells are reused (size-verified), so nothing was
+re-fetched needlessly. One operational note: killing the previous run left its `xargs -P 6` worker
+tree orphaned and still copying — those were killed by PID before relaunch, since two runs writing
+the same `/tmp/snmc_phase/cells` would race.
+
+### CHECKPOINT 6 (2026-08-19 16:25) — **CORRECTION: the "1000 verified BAMs" included truncated files**
+
+CHECKPOINT 4 claimed 1000 md5-verified BAMs. **That was wrong, and the marker count was not
+evidence of it.** Stage 1 immediately hit `IDX_FAIL` on
+`HBA_201030_H1930001_CX45_NAC_1_P1-6-N18-D23.final.bam`:
+
+```
+[W::bam_hdr_read] EOF marker is absent. The input is probably truncated
+[E::bgzf_read_block] Failed to read BGZF block data at offset 175109322
+                     expected 16609 bytes; hread returned 2852
+```
+
+The staged copy and the mount source have the **same md5** (`084f843e…`) and the **same size**
+(175112192 = **exactly 167 MiB**). So the copy was faithful — **the object on the mount is itself
+truncated**, at a clean MiB boundary.
+
+**How a truncated file became a "verified" member of the 1000** — a three-link chain:
+
+1. On 2026-08-18 18:21–18:28 this cell failed mount-verify three times (all "size lag", the
+   short-circuit bug from CHECKPOINT 3) and the writer gave up:
+   `FAIL mount-verify … staged copy kept`.
+2. **The writer only removed the partial *before* a retry, never after the final failure** — so the
+   167 MiB partial from copy attempt 3 was left sitting on the mount.
+3. The mop-up's marker seeding does `find … -name '*.final.bam'` and touches a done-marker for
+   **every file present**. It seeded a marker for the truncated partial. From then on the cell was
+   "done" and was never re-downloaded. Then `/tmp/snmc_dl/staged` was wiped, destroying the good
+   staged copy.
+
+Auditing every `FAIL mount-verify` across all download logs found **4 affected cells**, of which
+**2 are present-but-corrupt**:
+
+| cell | size on mount | verdict |
+|---|---|---|
+| `…NAC_1_P1-6-N18-D23` | 175112192 (**167.0 MiB**) | **TRUNCATED** |
+| `…A25_1_P3-3-K20-I18` | 24117248 (**23.0 MiB**) | **TRUNCATED** |
+| `…NAC_1_P1-4-M16-A8` | 205163551 | OK (`.recopy`, md5-verified in CP 4) |
+| `…A25_1_P3-5-K20-D10` | 205262327 | OK (`.recopy`, md5-verified in CP 4) |
+
+Both bad sizes are exact MiB multiples — the signature of truncation at a block boundary.
+
+**The Stage 1 guard added in CHECKPOINT 5 caught this on its first run**, which is the only reason
+it did not silently become a 999-cell experiment:
+`BATCH_FAIL b000 INCOMPLETE staged=100 indexed=99 want=100 -- not merging`.
+
+**Fixes:**
+- `download_snMC-seq_bulk.sh` — the total-failure branch now **removes the partial from the mount**
+  instead of abandoning it there.
+- `download_snMC-seq_bulk.sh` — marker seeding now runs **`samtools quickcheck` on every present
+  file**; a corrupt one is deleted and left unmarked so it gets re-downloaded.
+  Presence is not integrity.
+- **NEW `refetch_cells.sh <cell>…`** — targeted repair: verify tar size+md5 vs the manifest,
+  extract, quickcheck, delete the bad object, write the canonical name (falling back to
+  `.recopy.final.bam` if poisoned), md5+size verify with settle re-reads, quickcheck the mount
+  copy, set the marker, and invalidate any stale `/tmp` staging. Exactly one filename per cell, so
+  the count stays exact. Launched 16:25 for the 2 corrupt cells.
+- **NEW `validate_1000_bams.sh`** — a standalone quickcheck sweep of all 1000. Started, then
+  **deliberately stopped**: it duplicates ~200 GB of FUSE reads that Stage 1 already performs, and
+  Stage 1 indexes every cell, so **`IDX_FAIL` is itself the complete integrity check**. The
+  authoritative bad-cell list will therefore be the set of `IDX_FAIL` lines once Stage 1 finishes.
+  Kept for future one-off audits.
+
+**Method note worth carrying forward:** for these NeMO BAMs, `samtools quickcheck` (header + BGZF
+EOF block) is the cheap integrity test and it catches truncation, which an md5 comparison against a
+locally-derived checksum does not — if the local reference md5 was itself computed from a truncated
+file, the two agree and the corruption is invisible. The manifest's **tar** md5 is the only external
+ground truth, so repairs must start from the tar, as `refetch_cells.sh` does.
+
+### CHECKPOINT 7 (2026-08-19 16:25) — both corrupt cells repaired; supervisor added; Stage 1 running clean
+
+**Repair complete (`refetch_cells.sh`, rc=0).** Both cells were re-fetched from the NeMO tar,
+validated against the **manifest tar md5** (the only external ground truth), extracted,
+quickchecked, written to the **canonical** `<cell>.final.bam` name (neither name turned out to be
+poisoned — deletion + rewrite worked), md5+size verified, and quickchecked again on the mount:
+
+| cell | truncated size | true size | outcome |
+|---|---|---|---|
+| `…NAC_1_P1-6-N18-D23` | 175112192 (167.0 MiB) | **201113535** | canonical name, verified, quickcheck OK |
+| `…A25_1_P3-3-K20-I18` | 24117248 (23.0 MiB) | **200985996** | canonical name, verified, quickcheck OK |
+
+State now: `markers=1000  bams=1000  (2 of them *.recopy.final.bam)`. Stale `/tmp` staging for both
+cells was invalidated so Stage 1 re-fetches the good objects.
+
+**NEW `supervise_snMC_phasing.sh`** (launched, waiting on the running instance). The pipeline is
+deliberately fail-loud — Stage 1 refuses short batches, Stage 2 hard-blocks on an incomplete Stage 1
+— so one bad cell exits the whole run rather than silently truncating the experiment. Every stage
+and batch is idempotent and marker-gated, so a re-run resumes and only redoes the short batches.
+The supervisor supplies that re-run (up to 6 attempts) so the job converges unattended after a
+repair, and on each failed attempt it prints the **de-duplicated `IDX_FAIL` cell list** — the
+authoritative set of corrupt mount objects, ready to hand straight to `refetch_cells.sh`.
+
+**Stage 1 progress:** `BATCH_OK b001 reads=143424623 size=15062226740`. b000 is the only failed
+batch (it held `…N18-D23`) and will be redone by the supervisor against the repaired object.
+`/tmp` use 38 GB staged + 12 GB batches; 6.3 TB free, so the ~420 GB peak is comfortable.
+
+### snM3C-seq cross-reference — Stage 3 progress measurement
+bsgenova emits in reference-`.fai` contig order, so genomic position gives a real progress figure.
+At 53 min in, all three donors were at **~24 % of the 3.21 Gb reference** (H1930001 chr13:111.4 Mb,
+H1930002 chr14:20.6 Mb, H1930004 chr14:52) → **~3.7 h total for Stage 3, i.e. finishing ~19:15 UTC**,
+with 47905 / 76612 / 61104 records called so far. Recording the method because it is reusable: the
+last emitted `CHROM POS` cumulated over the `.fai` contig order is a cheap, honest progress meter
+for both callers.
+
+### CHECKPOINT 8 (2026-08-19 16:42) — supervisor completion test fixed (same flaw, caught before it bit)
+
+While a sibling helper on the snM3C-seq side was found publishing partial callsets because it
+detected completion by grepping an **append-only, run-shared** `progress.log` for
+`ALL_STAGES_DONE` (full incident in the snM3C-seq log, CHECKPOINT 6),
+`supervise_snMC_phasing.sh` was checked and **had the identical flaw**. It happened to be harmless
+today only because `/tmp/snmc_phase/progress.log` was created fresh this session and contains no
+such line — but the first time this pipeline completes and is later re-run for a different
+configuration, the stale line would make the supervisor declare success immediately.
+
+Rewritten to use per-run state:
+
+```bash
+complete_p(){ local s; for s in 3 4 5 6; do [[ -e "$W/.stage_${s}_done" ]] || return 1; done; }
+```
+
+Stage markers live in the per-run `/tmp` working tree and each is written only after its stage
+verified its own outputs, so they cannot be inherited from a previous run the way a log line can.
+`verify_published_artifacts.sh` also gained its own `require_complete()` guard, so it now refuses
+to run against an in-flight pipeline even when invoked by hand (`FORCE=1` overrides) — verified
+against the live run: `REFUSING to verify snMC-seq 1000-cell: incomplete run, missing stage
+markers: 3 4 5 6`.
+
+**Stage 1 progress:** `b001`/`b002`/`b003` merged OK (143.4 M / 148.8 M / 141.0 M reads,
+~15 GB each), ~8 min per batch. `b000` remains the single failed batch, to be redone by the
+supervisor against the repaired `…N18-D23` object.
+
+### CHECKPOINT 9 (2026-08-19 17:42) — **Stage 1 COMPLETE: all 1000 cells indexed and merged**
+
+The fail-loud design worked end to end. Timeline:
+
+- **17:35:08** Stage 1 finished 9/10 batches — `indexed_cells=900 total_reads=1301133229` — and
+  **Stage 2 refused to run**:
+  `Stage 2 BLOCKED … Refusing to build a truncated pseudo-bulk and label it 1000cells.`
+  Without the CHECKPOINT 5 guards this would now be a silently **900-cell** experiment with the
+  shortfall buried in one mid-log line.
+- **17:35:36** `supervise_snMC_phasing.sh` engaged (`attempt 1/6`) and relaunched the pipeline.
+- **17:42:40** `BATCH_OK b000 reads=153291924` — b000 rebuilt against the **repaired**
+  `…N18-D23` object (the refetch had invalidated its stale `/tmp` staging, so the good object was
+  re-fetched), followed by `BATCH_SKIP b001…b009`: the 9 finished batches were reused untouched, so
+  the retry cost ~7 minutes instead of ~80.
+- **17:42:41** `Stage 1 batches=10/10 indexed_cells=1000 total_reads=1454425153`
+
+**Final Stage 1 tally — 1000 cells, 1,454,425,153 reads** (~1.45 M reads/cell). Per-batch read
+counts, all verified merged-vs-sum-of-per-cell:
+
+| batch | reads | | batch | reads |
+|---|---|---|---|---|
+| b000 | 153,291,924 | | b005 | 138,854,750 |
+| b001 | 143,424,623 | | b006 | 151,174,675 |
+| b002 | 148,819,563 | | b007 | 145,256,562 |
+| b003 | 140,962,348 | | b008 | 146,802,515 |
+| b004 | 139,643,526 | | b009 | 146,194,667 |
+
+**Stage 2 started 17:42:41** — merging the 10 batch BAMs (144 GB total) into
+`H1930001_CX45_snMCseq_1000cells_merged.bam`. For scale, the 10-cell pseudo-bulk for this donor was
+**3.88 GB**; this one will be **~155 GB, i.e. ~40× the coverage**, which is the whole point of the
+experiment. `/tmp` at 144 GB used, 6.2 TB free.
+
+### CHECKPOINTS
+- [x] 1000 BAMs verified on mount in H1930001/
+- [x] **Stage 1  index 1000 per-cell BAMs + batch merges (10/10, 1000 cells, 1.454 G reads)**
+- [ ] Stage 2  1000-cell pseudo-bulk merged BAM + .bai
+- [ ] Stage 3  bsgenova callset
+- [ ] Stage 4  naive callset
+- [ ] Stage 5  preprocessed VCFs (2)
+- [ ] Stage 6  HapCUT2 phased output (2) — standard mode
+- [ ] compare 1000-cell vs 10-cell phased-SNP yield for H1930001
+
+### CHECKPOINT 10 (2026-08-19 18:14) — **Stage 2 COMPLETE: the 1000-cell pseudo-bulk exists**
+
+```
+[18:13:27]  final merged reads=1454425153 (expect 1454425153) size=123475609661
+[18:14:15]  freed batch BAMs
+[18:14:15]  === Stage 3: bsgenova on H1930001_CX45_snMCseq_1000cells_merged (-P 32) ===
+```
+
+- Merge ran 17:42:41 → 18:13:27 (**31 min**) for the 10 batch BAMs.
+- **Read count matched the Stage 1 sum exactly** (1,454,425,153) — end-to-end verification from
+  1000 per-cell indexes through 10 batch merges to the final merge, with no drift.
+- `samtools quickcheck` clean; `.bai` built and **published to `merged-BAM/` on the mount**
+  (8,931,824 B). The 123 GB BAM itself stays in `/tmp` by design (`PUBLISH_BIG_BAM=0`) — it is
+  reproducible from the 1000 published per-cell BAMs, and 6 GB copies already fail on this mount.
+- Batch BAMs freed after the final BAM verified, dropping `/tmp` from 144 GB back down.
+
+**Depth achieved, vs the 10-cell baseline for the same donor:**
+
+| pseudo-bulk | reads | size | vs 10-cell |
+|---|---|---|---|
+| H1930001 10-cell | 30,441,510 | 3.88 GB | 1× |
+| **H1930001 1000-cell** | **1,454,425,153** | **123.48 GB** | **47.8× reads, 31.8× bytes** |
+
+(My earlier ~155 GB estimate was high; actual is 123.5 GB.)
+
+**Stage 3 bsgenova started 18:14:15** on the 123 GB BAM at `-P 32`. Expect this to be long — the
+snM3C-seq Stage 3 took 3 h 28 min on a 6.3 GB BAM, so scaling by size suggests **many hours**; the
+`.fai`-cumulative-position progress meter (snM3C log CHECKPOINT 5) is the way to track it.
+
+**Prior from the snM3C-seq side, which bears directly on this experiment's hypothesis:** raising
+depth from ~30 M to ~100 M reads raised the bsgenova callset from ~1.2 k to ~187 k records for this
+same donor — variant yield is steeply non-linear in depth below ~1× coverage. At 1.45 G reads
+(~47.8× the 10-cell depth) this run should be far past that threshold, which is exactly what the
+1000-cell experiment was designed to test. The deliverable remains the **phased-SNP count** after
+het filtering and HapCUT2, against the 10-cell baseline of **359** (bsgenova) / **215** (naive) for
+H1930001 — not the raw callset size.
+
+### CHECKPOINTS
+- [x] Stage 1  index 1000 per-cell BAMs + batch merges (10/10, 1000 cells, 1.454 G reads)
+- [x] **Stage 2  1000-cell pseudo-bulk merged BAM + .bai (123.48 GB, read count verified)**
+- [ ] Stage 3  bsgenova callset
+- [ ] Stage 4  naive callset
+- [ ] Stage 5  preprocessed VCFs (2)
+- [ ] Stage 6  HapCUT2 phased output (2) — standard mode
+- [ ] compare 1000-cell vs 10-cell phased-SNP yield for H1930001

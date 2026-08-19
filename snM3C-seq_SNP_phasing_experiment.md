@@ -288,3 +288,313 @@ Selecting the 10 largest per donor for max pseudo-bulk coverage (as in snMC-seq 
   layout, into a `merged-BAM/` folder), then bsgenova + naive SNP calling vs `hg38_chrL.fa`.
 - Phase with HapCUT2 — **this time add `extractHAIRS --hic 1`** to exploit the 3C long-range
   contacts (the whole reason for switching to snM3C-seq).
+
+---
+
+## Session 3 (2026-08-18) — snM3C-seq PHASING PIPELINE on the 30 downloaded BAMs
+
+**Task (from user):** run the full phasing pipeline on the 30 already-downloaded snM3C-seq CX45
+BAMs (10 per donor: H1930001, H1930002, H1930004), mirroring how the snMC-seq experiment created
+folders and named files. Steps, one after another:
+1. **Index** — build `.bai` for all 30 BAMs (`samtools index`).
+2. **Merge per donor** — `samtools merge` the 10 cells/donor → 3 pseudo-bulk BAMs into a new
+   `Science-snM3C-seq/merged-BAM/` folder, named `<donor>_CX45_snM3Cseq_10cells_merged.bam`
+   (mirrors snMC's `<donor>_CX45_snMCseq_10cells_merged.bam`).
+3. **SNP calling — BOTH callers** vs standard `hg38-reference/hg38_chrL.fa` (the S6 reference
+   decision carries over: call germline variants against standard hg38+chrL, NOT the per-donor
+   SNP-substituted refs). Reuse the shared reference from the snMC experiment folder.
+   - **bsgenova** (`workspace/tools/bsgenova`): `bsextractor.py … | bsgenova.py -P 16`.
+   - **naive** (`workspace/Python-scripts/bisulfite_aware_naive_SNP_caller.py`, `-P 16`).
+   → unphased het callsets into `bisulfite-aware-SNPs/{from-bsgenova,from-naive}/`.
+4. **HapCUT2 preprocessing** (reuse `HapCUT2_preprocessing.sh` unchanged — 4 steps: inject
+   `##contig` from `hg38_chrL.fa.fai`; split multiallelics; keep het + drop chrM/chrY/chrL;
+   emit plain `.vcf`) → `bisulfite-aware-SNPs/{from-bsgenova,from-naive}-HapCUT2_preprocessed/`.
+5. **HapCUT2 phasing WITH Hi-C mode** — the whole point of switching to snM3C-seq:
+   **`extractHAIRS --hic 1`** to exploit long-range 3C contacts that bridge het sites short reads
+   never co-cover. Phased outputs → `phased-from-HapCUT2/{from-bsgenova,from-naive}/`. Compare
+   phased-SNP count / block sizes against the snMC-seq baseline (bsgenova 359/129/382,
+   naive 215/106/250 phased per donor).
+
+Runs IN PARALLEL with the snMC-seq 1000-BAM download (see snMC-seq log), in its own
+disconnect-safe tmux session `snm3c-phase`.
+
+### Folder structure created (mirrors snMC-seq_SNP_phasing_experiment/)
+Under `data/snM3C-seq_SNP_phasing_experiment/`:
+- `Science-snM3C-seq/{H1930001,H1930002,H1930004}/` — the 30 BAMs (exist) + `.bai` (this session).
+- `Science-snM3C-seq/merged-BAM/` — 3 pseudo-bulk merged BAMs + `.bai` (this session).
+- `bisulfite-aware-SNPs/{from-bsgenova,from-naive}/` — raw unphased callsets.
+- `bisulfite-aware-SNPs/{from-bsgenova,from-naive}-HapCUT2_preprocessed/` — preprocessed VCFs.
+- `phased-from-HapCUT2/{from-bsgenova,from-naive}/` — phased blocks + `.blocks.phased.VCF`.
+- Reference reused from `../snMC-seq_SNP_phasing_experiment/hg38-reference/hg38_chrL.fa` (same
+  456-contig hg38+chrL; snM3C BAMs share the identical `@SQ` — to be re-confirmed this session).
+
+### Key differences from the snMC-seq run
+- BAM basenames end `.3C.sorted.bam` (not `.final.bam`); tar layout was `<cell>.3C.sorted/…`.
+- Merged names use `snM3Cseq` not `snMCseq`.
+- **`extractHAIRS --hic 1`** at the phasing step (snMC used standard mode). Requires extending
+  `HapCUT2_run.sh` with an extractHAIRS-passthrough flag (added this session) OR a Hi-C variant.
+- 3C BAMs are ~2× larger (Hi-C contact reads) → merges + bsextractor scans take longer.
+
+### Env (ephemeral node — rebuild each session)
+`bsgenova` (01), `htslib-tools` (02), `hapcut2` (03) via `environments/0{1,2,3}_*.sh`
+(+ `samtools` 1.9 for index/merge/quickcheck). Channel fix in `_common.sh`.
+
+### CHECKPOINTS
+- [ ] envs rebuilt (bsgenova, hapcut2, htslib-tools, samtools)
+- [ ] 30 .bai built
+- [ ] 3 per-donor merged BAMs + .bai in merged-BAM/
+- [ ] bsgenova callsets (3) in from-bsgenova/
+- [ ] naive callsets (3) in from-naive/
+- [ ] preprocessed VCFs (6) in *-HapCUT2_preprocessed/
+- [ ] HapCUT2 --hic 1 phased outputs (6) in phased-from-HapCUT2/
+
+### CHECKPOINT 1 (2026-08-18 ~17:03) — phasing pipeline LAUNCHED & running
+- Orchestrator `run_snM3C-seq_phasing.sh` launched in disconnect-safe tmux session
+  **`snm3c-phase`** (via `nohup nice -n 10`; survives client disconnect and tmux death).
+- Envs verified present (bsgenova py3.11.15/numpy2.4.6/pysam0.24.0/samtools1.24; htslib-tools
+  bcftools1.14; hapcut2 extractHAIRS+HAPCUT2 1.3.4). Now in **Stage 0** staging reference +
+  30 BAMs to /tmp.
+- Runs all 6 stages one-after-another (index → merge → bsgenova → naive → preprocess →
+  HapCUT2 `--hic 1`), 3 donors concurrent within a stage. Each stage is resumable via
+  `/tmp/snm3c_phase/.stage_<N>_done` markers; verified outputs land in the mirror folders under
+  `data/snM3C-seq_SNP_phasing_experiment/`.
+- **`HapCUT2_run.sh` extended** with an extractHAIRS-passthrough flag `-x` (backward-compatible;
+  snMC behavior unchanged when empty). Stage 6 calls it with `-x "--hic 1"` — the 3C long-range
+  contacts that are the whole point of switching to snM3C-seq.
+- Monitoring: `/tmp/snm3c_phase/progress.log` (+ per-step `*_$donor.log`) and
+  `/tmp/snm3c_phase/runner.log`. Attach: `tmux attach -t snm3c-phase`.
+- Results (block/phased-SNP counts per donor per caller) will be recorded here as each stage
+  completes, for comparison against the snMC-seq baseline.
+
+### CHECKPOINT 2 (2026-08-18 ~17:39) — v1 pipeline FAILED (queryname sort); fixed in v2
+
+**Important gotcha discovered:** the NeMO snM3C-seq `<cell>.3C.sorted.bam` files are
+**`@HD SO:queryname` (name-sorted)** — the Hi-C convention — NOT coordinate-sorted, despite
+`.sorted` in the name. (`@SQ` = 456 contigs, matches `hg38_chrL.fa` exactly; only sort order is
+the issue.)
+
+**v1 cascade failure (first run, ~17:00–17:28):**
+- Stage 1 `samtools index` → `[E::hts_idx_push] Unsorted positions …` → 0 `.bai` built.
+- Stage 2 `samtools merge && samtools index` → merge produced a file but the index step failed
+  (name-sorted) → `MERGE_FAIL`, nothing persisted to `merged-BAM/`.
+- Stages 3/4 (bsgenova/naive) ran on the **missing** merged BAMs but the shell pipe's exit code
+  was the last command's, so they falsely logged OK while emitting **0-record** callsets.
+- Stage 5 preprocessed the empty callsets; Stage 6 HapCUT2 failed on all 6.
+- All bogus 0-record outputs were cleaned from the mount.
+
+**v2 fix (`run_snM3C-seq_phasing.sh` rewritten, relaunched 17:39 in tmux `snm3c-phase`):**
+- **New Stage 1: coordinate-sort + index each of the 30 per-cell BAMs** (`samtools sort` →
+  `<cell>.3C.coordsort.bam` + `.bai`; P=6 × `-@4`). Coordinate order is also exactly what
+  `extractHAIRS --hic 1` requires. This is the real "build .bai for the 30" step.
+- Stage 2 merges the **coordinate-sorted** per-cell BAMs per donor → coord-sorted pseudo-bulk
+  BAM (+`.bai`), with a read-count check (merged == Σ per-cell) before persisting to `merged-BAM/`.
+- **Hard input guards** added to Stages 3/4/6: a caller/phaser is skipped with an explicit
+  `*_FAIL` (never a false OK) unless its merged BAM+`.bai` exists and is non-empty; record counts
+  are logged after each caller.
+- Per-cell coord-sorted BAMs live in `/tmp` as intermediates; persisted analysis artifacts are the
+  3 coord-sorted merged BAMs (+`.bai`) plus callsets/preprocessed/phased. (The authentic
+  queryname-sorted downloads in the donor folders are left untouched.)
+- Monitoring: `/tmp/snm3c_phase/progress.log`, `runner_v2.log`, per-step `*_$donor.log`.
+- Results (block/phased-SNP counts per donor per caller, with `--hic 1`) will be recorded here on
+  completion and compared to the snMC-seq baseline.
+
+### CHECKPOINT 3 (2026-08-19 15:31) — v2 died mid-Stage-2 on FUSE; v3 launched, resumed at Stage 3
+
+**What actually happened to the v2 run (18:22 Aug 18):** it did NOT complete. It finished
+Stages 1–2 correctly and then the *interpreter itself* died:
+`run_snM3C-seq_phasing.sh: error reading input file: Remote I/O error`.
+Two independent iRODS/FUSE failure modes were at work:
+
+1. **The running script lived on the mount.** `bash` re-reads a script from disk as it
+   executes it, so one transient mount read error killed the whole pipeline — after ~43 min of
+   sorting and merging. (Same exposure applied to every `bash "$PREP"` / `bash "$HRUN"` call.)
+2. **`cp` of the ~6 GB merged BAMs to the mount raised `Remote I/O error`.** Result on the mount:
+   H1930001 landed intact (6304569554 B), H1930002 never written, H1930004 **truncated**
+   (5078253568 of 5926788102 B). Worse, `mark 2` was gated on *mount* file count, so a mount
+   write failure would have forced a full ~30-min re-merge on the next run.
+
+**State found intact in `/tmp` (node up 14 d, `/opt/conda` + `/tmp` both survived):**
+- 30/30 per-cell `.3C.coordsort.bam` + `.bai` in `/tmp/snm3c_phase/sorted/`
+- 3/3 merged pseudo-bulk BAMs + `.bai` in `/tmp/snm3c_phase/merged/`, all `samtools quickcheck`
+  clean, read counts already verified equal to Σ per-cell (98270879 / 103086888 / 95040464)
+- all 5 conda envs (`bsgenova`, `hapcut2`, `htslib-tools`, `samtools`, `tmux`) still built
+So **Stage 1 and Stage 2 compute never needed to be redone** — only mount publication did.
+
+**v3 changes (`run_snM3C-seq_phasing.sh`, 281 lines, published to `shell-scripts/`):**
+- **Code runs from `/tmp/snm3c_local/`, never the mount.** Local copies of the orchestrator,
+  `HapCUT2_preprocessing.sh`, `HapCUT2_run.sh`, the naive caller and `bsgenova/{bsextractor,bsgenova}.py`.
+  The mount is now only an input source and a publish target — it is off the code path entirely.
+- **COMPUTE decoupled from PUBLISH.** Stage markers depend only on `/tmp` artifacts. `cpv()` retries
+  each mount copy 3× with backoff and is **non-fatal** (`CP_FAIL` logged); a new **Stage 7**
+  re-publishes everything still missing at the end and prints the mount inventory.
+- **Stages 5/6 now read local inputs and write local outputs** (`/tmp/snm3c_phase/prep/{bsgenova,naive}`,
+  `phased/{bsgenova,naive}`), so a mount hiccup can no longer break phasing. Published afterwards.
+- **Idempotent per-item skips** everywhere (`MERGE_SKIP`/`BSG_SKIP`/`NAIVE_SKIP`/prep/phase guards),
+  so a re-launch never redoes finished work; Stage 2 quickchecks the local BAMs instead of re-merging.
+- Callers bumped to `-P 24` each (3 donors concurrent = 72 of 128 cores; 503 GB RAM).
+- Truncated `H1930004` BAM removed from `merged-BAM/` on the mount (intact copy lives in `/tmp`).
+
+**v3 run (launched 15:31:31, `setsid nohup nice -n 10`, pid 205206):**
+- envs verified in 3 s; Stage 0 re-staged nothing (ref + 30 raw BAMs already in `/tmp`)
+- Stage 1 `already done, skip`; **Stage 2 `MERGE_SKIP ×3` → 3/3 valid → marked** (no re-merge)
+- **Stage 3 bsgenova started 15:31:53** on all three real merged BAMs — i.e. past the point where
+  v2 died. Monitoring `/tmp/snm3c_phase/runner_v3.log` (+ `progress.log`, per-step `*_$donor.log`).
+- Still to come: Stage 4 naive, Stage 5 preprocessing (6), Stage 6 HapCUT2 `--hic 1` (6),
+  Stage 7 publish. Block / phased-SNP counts will be recorded here and compared with the snMC-seq
+  baseline (bsgenova 359/129/382, naive 215/106/250 phased per donor).
+
+### CHECKPOINTS
+- [x] envs rebuilt (bsgenova, hapcut2, htslib-tools, samtools)
+- [x] 30 per-cell coordinate-sorted BAMs + .bai
+- [x] 3 per-donor merged coord-sorted BAMs + .bai (in /tmp; 1/3 on mount, Stage 7 to re-publish)
+- [ ] bsgenova callsets (3)
+- [ ] naive callsets (3)
+- [ ] preprocessed VCFs (6)
+- [ ] HapCUT2 --hic 1 phased outputs (6)
+
+### CHECKPOINT 4 (2026-08-19 15:50) — v3 past the v2 failure point; Stage 3 producing real callsets
+
+- v3 launched **15:31:31** (pid 205206, `setsid nohup nice -n 10`, log
+  `/tmp/snm3c_phase/runner_v3.log`).
+- **Stages 1–2 correctly resumed, not recomputed.** Envs verified in 3 s; Stage 0 re-staged nothing
+  (reference + 30 raw BAMs already in `/tmp`); Stage 1 `already done, skip`; Stage 2 logged
+  `MERGE_SKIP ×3` after `samtools quickcheck` on each local merged BAM (6304569554 / 6227682158 /
+  5926788102 bytes) → `3/3` → marked. The ~43 min of sorting + merging from the v2 run was reused
+  in full; nothing was re-merged.
+- **Stage 3 bsgenova started 15:31:53** — i.e. v3 got past the exact point where v2 died — with all
+  three `bsextractor.py | bsgenova.py -P 24` pipes confirmed running on the real merged BAMs
+  (82 worker processes, load ~8).
+- By 15:50 all three donors are emitting **non-empty, growing** `.vcf.gz` + `.snv.gz` into
+  `/tmp/snm3c_phase/out/` (H1930001 135 KB, H1930002 410 KB, H1930004 300 KB and climbing) —
+  the decisive contrast with the v1 run, which produced 0-record callsets from missing BAMs.
+- Still to come: Stage 4 naive, Stage 5 preprocessing (6), Stage 6 HapCUT2 `--hic 1` (6), Stage 7
+  publish. Block / phased-SNP counts go here on completion, against the snMC-seq 10-cell baseline
+  (bsgenova 359/129/382, naive 215/106/250 phased per donor).
+- The 2 merged BAMs that failed to reach the mount in v2 are **not** blocking anything: they are
+  valid in `/tmp`, and v3's Stage 7 retries publication at the end.
+
+### NOTE (2026-08-19 16:01) — mount verification caveat affecting this experiment's published copies
+
+While mopping up the snMC-seq download, the iRODS mount was measured directly and found to
+**return a wrong size AND wrong bytes for a file read immediately after `cp` returns** — a
+205163551 B BAM read back as 209000510 B with a mismatching md5, then correct on the next
+attempt. **Performing a full read is itself what settles the object.** Full write-up in the
+snMC-seq log, CHECKPOINT 3.
+
+Consequences for this experiment:
+- Every `WARN copy-verify size lag` in the v2 run above is explained by this — including the two
+  merged-BAM copies. A passing size check is not proof of a good copy on this mount, and a failing
+  one is not proof of a bad copy.
+- **v3's `cpv()` verifies published copies by SIZE only.** v3 was already running and a running
+  bash script must not be edited — that is precisely what killed v2 — so it was left alone.
+- Instead, **`shell-scripts/verify_published_artifacts.sh` (new)** md5-compares every artifact on
+  the mount against the `/tmp` original the pipeline produced and re-copies mismatches. Run it
+  after v3 finishes: `bash verify_published_artifacts.sh snm3c`. That, not v3's own size check, is
+  the authoritative content check for the snM3C-seq deliverables.
+
+### CHECKPOINT 5 (2026-08-19 16:25) — Stage 3 progress measured: ~24 % of the genome at 53 min
+
+bsgenova emits variants in reference-`.fai` contig order, so the last emitted `CHROM POS`
+cumulated over the contig lengths is a cheap and honest progress meter (no need to guess from
+file sizes). At 53 min into Stage 3:
+
+| donor | last position | genome covered | records so far |
+|---|---|---|---|
+| H1930001 | chr13:111,384,115 | 763 / 3209 Mb = **23.8 %** | 47,905 |
+| H1930002 | chr14:20,581,955  | 786 / 3209 Mb = **24.5 %** | 76,612 |
+| H1930004 | chr14:52          | 766 / 3209 Mb = **23.9 %** | 61,104 |
+
+All three donors are advancing in step (they run concurrently at `-P 24` each). Linear
+extrapolation gives **~3.7 h for Stage 3, finishing ~19:15 UTC**; the `.fai` order is roughly
+lexicographic (chr1, chr10, chr11, chr12, chr13, chr14, chr15…), so the remaining share still
+contains the large chr2–chr9, and the many small `*_random`/decoy contigs at the tail are cheap.
+Stages 4–7 (naive caller, preprocessing, HapCUT2 `--hic 1`, publish) follow automatically.
+
+Note the contrast with the v1 run, which "finished" bsgenova in ~20 min — because it was scanning
+missing BAMs and emitting 0 records. A caller that takes hours on a 6 GB pseudo-bulk is the
+expected behaviour.
+
+### CHECKPOINT 6 (2026-08-19 16:42) — INCIDENT: my own watcher published a partial callset; fixed
+
+**Self-inflicted, caught within 5 minutes, one file affected.** Recording it in full because the
+mistake is a trap anyone re-running these pipelines will hit.
+
+At 16:33 a helper (`watch_snm3c_then_verify.sh` v1) was launched to md5-verify v3's published
+artifacts after it finished. It tested completion with:
+
+```bash
+grep -q 'ALL_STAGES_DONE' /tmp/snm3c_phase/progress.log
+```
+
+**`progress.log` is append-only and SHARED by v1, v2 and v3.** The **v1** run wrote
+`=== PIPELINE COMPLETE ===` + `ALL_STAGES_DONE` at **2026-08-18 17:28:35** — immediately after
+`Stage 6 phased VCFs=0`, i.e. the bogus run that phased nothing. That line never goes away, so the
+grep was a **permanent false positive**. The watcher declared v3 "done" 1 minute after arming, ran
+the verifier, and the verifier's job is to re-copy `/tmp` → mount on mismatch — so it began
+**publishing v3's in-progress callsets as final results.**
+
+Damage: exactly one file — `from-bsgenova/H1930001_…merged.vcf.gz` at **898840 bytes**, a snapshot
+of a scan that was only ~24 % through the genome. It was removed, and the object name was probed
+afterwards and confirmed still writable, so v3's real Stage 3 publish is unaffected. v3 itself was
+never touched (82 workers throughout, callsets still growing). All other output dirs were untouched
+because the verifier spent its first 5 minutes on the merged-BAM checks.
+
+**Root cause in one line: a stage-completion test that reads a log shared across runs, instead of
+per-run state.**
+
+**Fixes — completion is now defined by per-run `/tmp` stage markers, never by a log line:**
+- `watch_snm3c_then_verify.sh` v2 — completion requires **(a)** the pipeline process to be gone
+  **and (b)** `.stage_{3,4,5,6}_done` to all exist. If the process exits without them it logs
+  `INCOMPLETE RUN`, prints the last progress lines and **publishes nothing**.
+- `verify_published_artifacts.sh` — now carries a `require_complete()` **guard of its own**, so it
+  refuses even when invoked by hand. Self-tested just now against the live in-flight run:
+  `REFUSING to verify snM3C-seq: incomplete run, missing stage markers: 3 4 5 6`. `FORCE=1`
+  overrides deliberately.
+- `supervise_snMC_phasing.sh` — had the identical latent flaw (its `progress.log` happens to be
+  clean today only because it was created fresh). Rewritten to use the same `complete_p()`
+  stage-marker test.
+
+Stage markers are the right authority here: they live in the per-run `/tmp` working tree and each
+is written only after its stage verified its own outputs, so they cannot be inherited from a
+previous run the way a log line can.
+
+### CHECKPOINT 7 (2026-08-19 18:59) — **Stage 3 COMPLETE: 3/3 bsgenova callsets, ~150× the 10-cell snMC-seq yield**
+
+Stage 3 ran 15:31:53 → 18:59:27 (**3 h 28 min**, against the 3.7 h projected at the 53-min mark —
+the `.fai`-position progress meter was accurate).
+
+| donor | bsgenova records | published to mount |
+|---|---|---|
+| H1930001 | **186,988** | `.vcf.gz` 2.68 MB + `.snv.gz` 3.33 MB |
+| H1930002 | **302,301** | `.vcf.gz` 4.35 MB + `.snv.gz` 5.35 MB |
+| H1930004 | **230,426** | (publishing) |
+
+`Stage 3 bsgenova callsets (local, non-empty) = 3/3`.
+
+**Against the snMC-seq 10-cell baseline — same donors, same caller, same reference — with read
+depth included so the comparison is honest:**
+
+| dataset | reads in pseudo-bulk | bsgenova records | records/dataset ratio | read ratio |
+|---|---|---|---|---|
+| snMC 10-cell H1930001 | 30,441,510 | 1,166 | — | — |
+| snMC 10-cell H1930002 | 19,211,865 | 421 | — | — |
+| snMC 10-cell H1930004 | 37,517,754 | 1,712 | — | — |
+| snM3C 10-cell H1930001 | 98,270,879 | **186,988** | **160×** | 3.2× |
+| snM3C 10-cell H1930002 | 103,086,888 | **302,301** | **718×** | 5.4× |
+| snM3C 10-cell H1930004 | 95,040,464 | **230,426** | **135×** | 2.5× |
+
+**The variant gain (135–718×) vastly exceeds the read gain (2.5–5.4×).** A plausible reading: at
+~20–37 M reads over a 3.2 Gb reference the genome-wide depth is well under 1×, so almost no site has
+the ≥2 reads needed to call a heterozygote; at ~100 M reads (~1–3×) a large fraction of sites cross
+that threshold. Variant yield is strongly non-linear in depth in this regime, so a 3× depth increase
+producing a >100× callset increase is not implausible — **but the magnitude should not be taken at
+face value yet.** Raw callset size is not the deliverable, and part of this could be low-confidence
+or spurious calls that the het-filtering in Stage 5 will strip.
+
+**The number that actually matters is the phased-SNP count after Stage 5 het filtering + Stage 6
+HapCUT2 `--hic 1`**, against the snMC-seq baseline of **359 / 129 / 382** phased SNPs per donor.
+That is the comparison this experiment was set up to make; it will be recorded here on completion.
+
+Stage 4 (naive caller) now running on the same three merged BAMs, then Stage 5 preprocessing,
+Stage 6 phasing with `--hic 1`, Stage 7 publish. The marker-gated watcher will md5-verify all
+published artifacts once the stage 3–6 markers are all present.
