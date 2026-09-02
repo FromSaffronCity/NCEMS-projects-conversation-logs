@@ -1546,3 +1546,986 @@ H1930001 — not the raw callset size.
 - [ ] Stage 5  preprocessed VCFs (2)
 - [ ] Stage 6  HapCUT2 phased output (2) — standard mode
 - [ ] compare 1000-cell vs 10-cell phased-SNP yield for H1930001
+
+### CHECKPOINT 11 (2026-08-19 20:00) — Stage 3/4 re-implemented as per-contig shards: ~52 h → ~4 h
+
+**The serial pipe was wasting the machine.** Measured on the 123 GB pseudo-bulk:
+
+| | |
+|---|---|
+| `bsextractor.py` (single-threaded producer) | **71–81 % CPU** |
+| each of the 32 `bsgenova.py` workers | **0.6 % CPU** (starved on the pipe) |
+| total | **~0.8 of 128 cores** |
+| progress | 2.75 % of the genome in 85 min → **~52 h projected** |
+
+`-P 32` cannot help: `bsextractor.py | bsgenova.py -P N` is serialised on the **producer**. This also
+explains the snM3C-seq Stage 3 timing (3 h 28 min on a 6.3 GB BAM) — same single-core ceiling.
+
+**Verified that per-contig sharding is safe before changing anything:**
+- both callers accept `--chr/--start/--end`;
+- every prior is a **fixed constant** passed on the command line (mutation rate, error rate,
+  methylation rates, min-depth, p-value, shrink-depth) — neither caller estimates anything
+  genome-wide;
+- **no FDR / Bonferroni / multiple-testing correction** anywhere: bsgenova applies
+  `p_value < params.pvalue` per site, and its only globals are output-writer handles;
+- **empirical proof, not just code reading:** sharded `chr21` on the snM3C-seq H1930001 BAM vs the
+  chr21 slice of the *completed serial* run → **3550 records each, `diff` BYTE-IDENTICAL**.
+
+**NEW `run_sharded_callers.sh`** — runs `bsextractor --chr C | bsgenova` and the naive caller
+per contig, 26 concurrent, then merges shards in `.fai` contig order (VCF: one header + bodies;
+`.snv` is a headerless TSV so straight concatenation). Design choices:
+- **whole-contig sharding only.** Sub-contig `--start/--end` splitting would risk boundary
+  off-by-ones (double-counted or dropped sites); whole contigs need no boundary reasoning. Wall-clock
+  is therefore bounded by the largest contig (chr1, 7.8 % of the reference) ⇒ **~4 h, not ~52 h**.
+- **completeness gate:** all 456 contigs must have produced both shards or it refuses to merge and
+  says so — same fail-loud rule as Stage 1.
+- **cross-check:** merged record count must equal the sum of per-shard counts, logged either way.
+- idempotent per shard, so a re-run resumes.
+
+**Result of the switch (measured 1 minute in):** **37 caller processes, 1592 % CPU = 15.9 cores**,
+against 0.8 cores serial — a **20× increase in utilisation**. Shards on small contigs complete in
+5–11 s. Smoke-tested on one small contig first (both callers rc=0, valid `.vcf.gz`/`.snv.gz`) before
+committing all 456. Outputs land at exactly the paths the pipeline expects, so the supervisor's next
+run will log `BSG_SKIP` / `NAIVE_SKIP` and proceed straight to preprocessing and HapCUT2.
+
+The 2.75 %-complete serial callset was discarded (3.5 MB `.vcf.gz`, 4.0 MB `.snv.gz`) rather than
+being mixed with shard output.
+
+**Also hardened:** `supervise_snMC_phasing.sh` and `chain_snMC_download_then_phase.sh` used
+`pgrep -f <name>` for process liveness, which matches any shell whose command line merely *mentions*
+the name — a stale wrapper from the previous session blocked a sibling waiter for 26 h this way
+(full write-up in the snM3C-seq log, CHECKPOINT 8). Both now anchor the match to the real
+invocation.
+
+### CHECKPOINT 12 (2026-08-20) — **Stages 3–6 COMPLETE: the 1000-cell result is in**
+
+`SUPERVISOR: SUCCESS` at 02:30:14; all six stage markers present. Sharding did what it promised.
+
+**Stage 3/4 — sharded calling: 5 h 06 m wall, against the ~52 h serial projection (~10×).**
+- longest shard is chr1/chr2 as designed (chr2 18,335 s = 5 h 05 m); chrY 1,173 s; small contigs 4–40 s.
+- `all 456 contigs produced both shards` — the completeness gate passed, no silent partial merge.
+- `VERIFY bsg OK: merged=3749921 == sum-of-shards=3749921`; `VERIFY naive OK: 3423882 == 3423882`.
+
+**Raw callsets (H1930001, 1000-cell pseudo-bulk):**
+
+| caller   | total records | het | hom-alt |
+|----------|--------------:|----:|--------:|
+| bsgenova | 3,749,921 | 2,319,448 | 1,430,473 |
+| naive    | 3,423,882 | 2,040,577 | 1,383,305 |
+
+**Stage 5 preprocessing** (split multiallelics, drop chrM/chrY/chrL, keep het):
+bsgenova 3,749,921 → 3,781,088 split → **2,314,396 het**; naive 3,423,882 → 3,426,350 → **2,012,384 het**.
+
+**Stage 6 HapCUT2 (standard short-read mode):**
+
+| | bsgenova | naive |
+|---|---:|---:|
+| fragments | 14,607,850 | 12,360,809 |
+| variants in | 2,314,396 | 2,012,384 |
+| mean variants/read | 3.31 | 4.28 |
+| blocks | 315,821 | 289,223 |
+| coverage per variant | 59.98 | 92.58 |
+| **phased SNPs (`\|` in VCF)** | **976,575** | **694,743** |
+| phasing rate | 42.20 % | 34.52 % |
+| runtime | 8 m 47 s | 23 m 39 s |
+| N50 haplotype | 0.03 kb | 0.09 kb |
+
+Internal consistency ✓ with pruning accounted: blocks-file variant lines 983,588 / 701,648 minus
+pruned (`-`) entries 7,013 / 6,905 equals the VCF `|` counts exactly.
+
+### The deliverable — 1000 cells vs the 10-cell baseline, same donor H1930001
+
+| metric | 10-cell | 1000-cell | ratio |
+|---|---:|---:|---:|
+| reads | 30,441,510 | 1,454,425,153 | 47.8× |
+| nominal genome coverage¹ | ~1.2× | **~58×** | 47.8× |
+| bsgenova raw calls | 1,166 | 3,749,921 | 3,216× |
+| bsgenova het into HapCUT2 | 792 | 2,314,396 | 2,922× |
+| bsgenova blocks | 109 | 315,821 | 2,897× |
+| **bsgenova phased SNPs** | **359** | **976,575** | **2,720×** |
+| bsgenova phasing rate | 45.3 % | 42.2 % | 0.93× |
+| naive raw calls | 660 | 3,423,882 | 5,188× |
+| naive het into HapCUT2 | 419 | 2,012,384 | 4,802× |
+| naive blocks | 61 | 289,223 | 4,742× |
+| **naive phased SNPs** | **215** | **694,743** | **3,231×** |
+| naive phasing rate | 51.3 % | 34.5 % | 0.67× |
+
+¹ mean read length 124.8 bp (sampled from the merged BAM, single-end: extractHAIRS reports
+`PE-fragments 0`) × read count / 3.1 Gb.
+
+**Four findings, in order of how much they matter:**
+
+1. **The hypothesis holds, steeply.** 47.8× the reads bought **2,720× (bsgenova) / 3,231× (naive)**
+   more phased SNPs. This is the same non-linearity seen on the snM3C-seq side (~1.2 k → ~187 k
+   records for 30 M → 100 M reads) carried to its conclusion.
+
+2. **Depth bought sites, not linkage.** The phasing *rate* did not improve — it fell (45.3 → 42.2 %
+   bsgenova; 51.3 → 34.5 % naive). All of the gain is in the denominator: there are simply ~2,900×
+   more het sites to work with, and roughly the same fraction of them happen to share a read.
+
+3. **Haplotype blocks stay read-length-scale, at any depth.** Mean block span **82 bp (bsgenova) /
+   79 bp (naive)**; N50 0.03/0.09 kb; **70.4 % / 75.4 % of blocks contain exactly 2 SNPs**
+   (mean 3.11 / 2.43 variants; max 282 / 629). Single-end snMC-seq reads carry no information
+   beyond their own length, so more depth adds more short blocks rather than longer ones.
+   Chromosome-scale haplotypes need either Hi-C contacts (the snM3C-seq `--hic 1` arm) or a
+   population panel — and S12 already established the panel route is a dead end for this callset.
+
+4. **Phased SNPs moved onto the primary chromosomes.** Share of phased SNPs on `chr1–22/X/Y`:
+   **55.7 % → 98.6 % (bsgenova)** and **81.9 % → 97.8 % (naive)**. The 10-cell result was dominated
+   by chr16 pericentromeric / `_random` / `chrUn_` pile-ups — i.e. mapping artefacts of a handful of
+   high-coverage loci. At 58× the signal is genome-wide and roughly proportional to chromosome
+   length (chr1 79,056; chr2 73,575; chr4 59,782 …). This makes the 1000-cell callset qualitatively
+   different from the 10-cell one, not merely bigger.
+
+**Scale check:** 2.31 M / 2.01 M het calls is the order expected for a whole human genome
+(~2 M het SNVs). The callset is no longer the limiting factor for this pipeline — read length is.
+
+**Two caveats, unchanged and now larger in absolute terms:**
+- extractHAIRS still has **no bisulfite mode**, so C/T and G/A sites remain bias-prone; that
+  systematic error now applies to ~10⁶ phased sites rather than a few hundred.
+- **No truth set.** Nothing here establishes what fraction of the 2.3 M het calls are real. The
+  bsgenova-vs-naive gap (2.31 M vs 2.01 M het; naive hard-masks conversion-ambiguous bases) is the
+  only visible margin of that uncertainty. Pooling 1000 cells averages out per-cell allelic dropout
+  but also lets residual conversion error accumulate into confident-looking het calls.
+
+**Artifacts** published to `bisulfite-aware-SNPs/from-{bsgenova,naive}/`,
+`…-HapCUT2_preprocessed/`, and `phased-from-HapCUT2/from-{bsgenova,naive}/` (the pipeline
+md5-verifies each copy inline via `cpv()`; `verify_published_artifacts.sh snmc` re-audited them
+independently against the `/tmp` originals). The 123 GB merged BAM stays in `/tmp` by design;
+its `.bai` is on the mount and the BAM is reproducible from the 1000 published per-cell BAMs.
+
+### CHECKPOINTS
+- [x] Stage 1  index 1000 per-cell BAMs + batch merges (10/10, 1000 cells, 1.454 G reads)
+- [x] Stage 2  1000-cell pseudo-bulk merged BAM + .bai (123.48 GB, read count verified)
+- [x] **Stage 3  bsgenova callset (3,749,921 records, sharded, sum-verified)**
+- [x] **Stage 4  naive callset (3,423,882 records, sharded, sum-verified)**
+- [x] **Stage 5  preprocessed VCFs (2) — 2,314,396 / 2,012,384 het**
+- [x] **Stage 6  HapCUT2 phased output (2) — 976,575 / 694,743 phased SNPs**
+- [x] **compare 1000-cell vs 10-cell phased-SNP yield for H1930001 — 2,720× / 3,231×**
+
+**Open next steps:** (a) bsgenova-vs-naive concordance on the overlapping phased blocks — now
+statistically meaningful where it was not at 359 SNPs; (b) compare against the snM3C-seq `--hic 1`
+arm to quantify what Hi-C contacts add to block length at matched depth; (c) any external genotype
+data for H1930001 would convert finding 4 from "plausible" to "validated".
+
+---
+
+## Session (2026-08-20) — TASK 2: 1000-cell READ-DOWNSAMPLING SATURATION SERIES (read this to resume)
+
+One of two parallel disconnection-safe runs started this session (tmux `mc-downsample`, also
+`setsid nohup` so it survives tmux death and a VSCode/VSCode-server disconnect). The sibling run
+(Task 1, snM3C-seq pairing fix + 100-cell) is in `snM3C-seq_SNP_phasing_experiment.md` Session 4.
+
+### Why (user's question)
+At 1000 cells the pseudo-bulk gave ~2.31 M / 2.01 M het calls and 976,575 / 694,743 phased SNPs
+(bsgenova / naive, ~58× depth). That is near whole-genome het saturation (~2 M het SNVs expected).
+**Downsample the 1000-cell pseudo-bulk reads to several depths and re-run genotyping + phasing to
+find the saturation point** of raw-SNP / het / phased-SNP yield vs coverage. Fills the curve
+between the 10-cell (~1.2×, 359/215 phased) and 1000-cell (~58×, 976k/694k) endpoints already on
+record.
+
+### Prerequisite REBUILD (important): the 123 GB 1000-cell merged BAM is GONE
+It lived in `/tmp` by design (`PUBLISH_BIG_BAM=0`) and `/tmp` was wiped between sessions — only its
+`.bai` remains on the mount. The **1023 per-cell BAMs are intact** on the mount under
+`Science-snMC-seq/{H1930001,H1930002,H1930004}/` (H1930001 has the 1000 used). Task 2 therefore
+first **rebuilds the 1000-cell merged BAM from the per-cell BAMs** (Stage 1–2 logic of
+`run_snMC-seq_1000cell_phasing.sh`: fetch→index→batch-merge→final merge, kept in /tmp).
+
+### Plan (tmux `mc-downsample`, driver `run_snMC_downsample_series.sh`)
+Resumable via `/tmp/mc_downsample/.stage_*_done` and per-fraction markers; compute in /tmp,
+publish to the mount with retrying non-fatal `cpv()`; log `/tmp/mc_downsample/progress.log`.
+
+- **Stage 0** — rebuild the 1000-cell H1930001 merged BAM in /tmp (reuse if a valid copy exists).
+- **Stage 1 — downsample** with `samtools view -s <seed>.<frac>` (reproducible seed=42; snMC reads
+  are single-end so per-read subsampling is exact). Fractions (≈ depth):
+  `0.02 (~1.2×), 0.05 (~3×), 0.10 (~6×), 0.20 (~12×), 0.40 (~23×), 0.70 (~41×)`.
+  The full 1.0 (~58×) point is already computed (976,575 / 694,743 phased) and the 10-cell (~1.2×)
+  point is the old baseline — both are reused, not recomputed.
+- **Stage 2 — per fraction: SHARDED genotyping** (`run_sharded_callers.sh`, per-contig, byte-identical
+  to the serial pipe, ~4 h-bounded instead of ~52 h) → bsgenova + naive callsets.
+- **Stage 3 — per fraction: HapCUT2 preprocessing** (het-only, ##contig, drop chrM/chrY/chrL).
+- **Stage 4 — per fraction: HAPCUT2 STANDARD mode** (no `--hic`; snMC-seq is short-read WGBS-like).
+- **Stage 5 — assemble the saturation table**: fraction, downsampled reads, est. depth, bsgenova
+  raw/het/phased, naive raw/het/phased, phasing rate. Compared against the 1.0 (58×) and 10-cell
+  endpoints. Output CSV under `data/snMC-seq_downsample_series/`.
+
+Outputs land under `data/snMC-seq_downsample_series/` mirroring the experiment layout
+(`downsampled-BAM/`, `bisulfite-aware-SNPs/frac<F>/from-{bsgenova,naive}/`,
+`phased-from-HapCUT2/frac<F>/from-{bsgenova,naive}/`, `saturation_summary.csv`).
+
+Depth note (from CHECKPOINT 10): snMC-seq mean read length ~124.8 bp, single-end; est. depth =
+downsampled_reads × 124.8 / 3.1e9. Fractions chosen to probe both the steep low-coverage regime and
+the approach to the 58× plateau, so the knee of the yield-vs-depth curve is captured.
+
+---
+
+## Session (2026-08-24) — TASK 2 EXECUTION LAUNCHED (read this to resume)
+
+**User request (verbatim intent):** "We phased snMC-seq with 10 cells/donor and 1000 cells for
+donor-1 only, and 1000 was more than enough to cover the whole genome — so downsample and find
+**how many snMC-seq samples are enough for donor-1 to generate a whole-genome pseudo-bulk for
+phasing.**" Runs as one of two parallel disconnect-safe tasks this session (sibling = snM3C-seq
+Task 1, in `snM3C-seq_SNP_phasing_experiment.md` Session 5).
+
+### Interpretation: read-fraction downsampling as a proxy for cell count
+The scripted approach downsamples READS from the 1000-cell pseudo-bulk (`samtools view -s`), which
+is the cheap, exact way to trace the coverage→yield saturation curve. Because the pool is 1000
+randomly-pooled cells, a read fraction *f* corresponds to **≈ f × 1000 cells** worth of coverage.
+The saturation table is therefore read directly as a cell-count answer:
+
+| fraction | ≈ equivalent cells | est. depth |
+|---|---|---|
+| 0.02 | ~20  | ~1.2× |
+| 0.05 | ~50  | ~3×   |
+| 0.10 | ~100 | ~6×   |
+| 0.20 | ~200 | ~12×  |
+| 0.40 | ~400 | ~23×  |
+| 0.70 | ~700 | ~41×  |
+| 1.00 | 1000 | ~58× (already computed: 976,575 / 694,743 phased) |
+
+"Enough to cover the whole genome" is judged from where **phased-SNP / het-site yield plateaus**
+against the 1000-cell (58×) endpoint. Deliverable: `saturation_summary.csv` + the knee of the curve
+→ a recommended minimum cell count for donor-1 whole-genome pseudo-bulk phasing.
+
+### What is being run — `run_snMC_downsample_series.sh` (tmux `mc-downsample`, setsid nohup nice -n 10)
+- **Stage 0** rebuild the 1000-cell H1930001 merged BAM in /tmp from the 1000 per-cell BAMs on the
+  mount (the 123 GB merged BAM was lost when /tmp was wiped; only its `.bai` survived).
+- **Stages 1–4 per fraction** (0.02…0.70, smallest first): downsample → sharded bsgenova+naive
+  genotyping → HapCUT2 preprocessing (het-only) → HAPCUT2 **standard mode** (snMC-seq is
+  short-read WGBS-like, no `--hic`).
+- **Stage 5** assemble `saturation_summary.csv` (fraction, reads, depth, raw/het/phased/rate per
+  caller), append the already-known 1.0 (58×) endpoint.
+
+### ⚠️ USER DIRECTIVE honoured this run: keep the pseudo-bulk BAM on the mount
+Previously the 123 GB 1000-cell merged BAM was left only in /tmp (`PUBLISH_BIG_BAM=0`) and lost on
+the node wipe — the user flagged this ("you forgot to keep a copy … don't do it again"). **This run
+publishes the rebuilt 1000-cell merged BAM + `.bai` to the mount** at
+`Science-snMC-seq/merged-BAM/H1930001_CX45_snMCseq_1000cells_merged.bam` as a background,
+non-blocking copy after Stage 0 (size-only verify for the >2 GB file; ~123 GB @ ~8 MB/s ≈ several
+hours, does not gate the downsampling). The downsampled BAMs, callsets, phased sets and the summary
+CSV all land under `data/snMC-seq_downsample_series/` as before.
+
+### Execution environment (shared with Task 1; node was ephemeral again)
+Envs rebuilt via `/tmp/bootstrap.sh` (`bsgenova`, `htslib-tools`, `hapcut2`, `samtools`, `tmux`);
+reference at `/tmp/snm3c_phase/hg38_chrL.fa`; code at `/tmp/snm3c_local/`. Resumable via
+`/tmp/mc_downsample/.stage_*` + `.frac_<F>_done`; monitor `/tmp/mc_downsample/progress.log`.
+Resource plan: merge PWORK=32, sharded SHARD_CONC=26 × -P2. Runs concurrently with Task 1 on the
+256-core / 503 GB node.
+
+## RUN 2026-08-24/25 — Stage 0 rebuilt + published; saturation series through frac 0.40
+
+### Stage 0: 1000-cell pseudo-bulk rebuilt and VERIFIED ON THE MOUNT
+
+Rebuilt from the 1000 per-cell BAMs in 10 batches of 100 (fetch → merge → read-count check), each
+batch verified against its expected read count before its per-cell inputs were deleted:
+
+| | |
+|---|---|
+| batches | 10/10, all `BATCH_OK` |
+| merged reads | **1,454,425,153** — exactly the sum of the ten batch counts |
+| size | 123,478,138,292 bytes (115 GiB) |
+| `samtools quickcheck` | OK |
+| mount location | `Science-snMC-seq/merged-BAM/rebuilt/H1930001_CX45_snMCseq_1000cells_merged.bam` (+ `.bai`) |
+
+**The user directive from last run is satisfied: the pseudo-bulk BAM is on the mount, not only in
+/tmp.** Getting it there took three attempts and a new tool — details below, because the failure
+modes are properties of this mount and will recur.
+
+### Publishing a 115 GiB file to the iRODS FUSE mount — what actually works
+
+1. **A single `cp` does not survive.** The driver's background `cpv` copy ran 2 h 48 m, reached
+   ~72 GB, then died: `cp: error writing ...: Remote I/O error` / `failed to close`. Nothing was
+   left behind. Its retry loop would have spent another ~6 h failing the same way twice, so it was
+   stopped.
+2. **The failed name is then POISONED.** After that failure, `stat` on the destination reported
+   *No such file or directory*, yet opening it for write returned `Remote I/O error` — an orphaned
+   catalog entry for the data object. A *different* name in the same directory worked immediately.
+   This is why the file now lives in a `rebuilt/` subdirectory: it keeps the canonical filename
+   instead of mangling it. **If a large publish fails, do not retry the same path — use a new one.**
+3. **`>>` append is silently ignored; `dd seek= conv=notrunc` pwrite works and is byte-exact.**
+   Verified on a 30 MiB probe: three chunked pwrites reproduced the source md5 exactly, while an
+   `>>` append left the file size unchanged.
+4. **A just-written region reads back EMPTY until the object settles**, so per-chunk read-back md5
+   verification is impossible — the first attempt failed every chunk with the md5 of the empty
+   string. Verification has to happen once, at the end, against the settled object.
+
+`shell-scripts/publish_big_file.sh` implements the result: chunked pwrite (4 GiB default, each its
+own open/write/close so no connection must survive hours), per-chunk state files so a re-run
+resumes instead of restarting, and a single end verification of size + `samtools quickcheck` +
+`idxstats` read count. The successful run: 29 chunks, ~17 min each while sharing the mount with
+Task 1's Step B downloads, 23:21 → 07:09, ending `size dst=123478138292 src=123478138292`,
+`quickcheck OK`, `idxstats reads=1454425153 OK`, `PUBLISH OK`.
+
+Note: the driver's own end-of-run check still looks at the pre-poisoning path
+(`merged-BAM/$NAME.bam`) and will log a size-mismatch WARN. That WARN is expected and does not
+mean the publish failed — the file is in `merged-BAM/rebuilt/`.
+
+### Saturation series (donor H1930001, phasing WITHOUT --hic, standard short-read mode)
+
+Depth estimated as reads x 124.8 bp / 3.1 Gb. Rate = phased / het.
+
+| fraction | reads | depth | bsg het | bsg phased | bsg rate | naive het | naive phased | naive rate |
+|---|---|---|---|---|---|---|---|---|
+| 0.02 | 29,082,325 | 1.17x | 684 | 319 | 46.6% | 366 | 209 | 57.1% |
+| 0.05 | 72,717,240 | 2.93x | 13,109 | 2,369 | 18.1% | 2,363 | 894 | 37.8% |
+| 0.10 | 145,438,825 | 5.86x | 293,401 | 37,297 | 12.7% | 35,134 | 4,825 | 13.7% |
+| 0.20 | 290,896,124 | 11.71x | 1,242,523 | 238,781 | 19.2% | 441,349 | 60,876 | 13.8% |
+| 0.40 | 581,764,858 | 23.42x | 1,765,367 | 497,918 | 28.2% | 1,422,157 | 368,167 | 25.9% |
+| 1.00 (known) | 1,454,425,153 | 58.5x | 2,314,396 | 976,575 | 42.2% | 2,012,384 | 694,743 | 34.5% |
+
+**The knee is at fraction 0.10–0.20, i.e. 100–200 donor-1 cells.** Reading the curve:
+
+- Below 0.10 there is essentially nothing to phase: at 1.17x only 684 het sites are called at all.
+  The *rate* looks best here (46.6%) but that is a selection effect — the only sites callable at
+  1x sit in the deepest, easiest-to-link pileups. Rate is the wrong metric at low depth; count is
+  the right one.
+- 0.10 → 0.20 is the takeoff: phased SNPs go 37,297 → 238,781, a **6.4x gain for 2x the reads**,
+  and the bsgenova rate turns the corner (12.7% → 19.2%).
+- 0.20 → 0.40 already decays to a **2.1x gain for 2x the reads**, with het discovery saturating
+  (1.24 M → 1.77 M against the 2.31 M full-depth ceiling).
+
+So 200 cells buys ~24% of full-depth phased yield and 400 cells ~51%, while the marginal return per
+added cell peaks around 100–200 and falls steadily after. frac 0.70 is still running; Stage 5 will
+emit `saturation_summary.csv` with all points including the 1.00 endpoint.
+
+### TASK 2 COMPLETE (2026-08-25 11:36 UTC) — full saturation curve + conclusion
+
+`saturation_summary.csv` published to `data/snMC-seq_downsample_series/` (verified against the local
+copy); per-fraction callsets, preprocessed VCFs, phased sets and downsampled-BAM indexes are under
+the same tree in `bisulfite-aware-SNPs/frac*`, `phased-from-HapCUT2/frac*`, `downsampled-BAM/`.
+
+| fraction | cells ~ | reads | depth | bsg het | bsg phased | bsg rate | naive het | naive phased | naive rate |
+|---|---|---|---|---|---|---|---|---|---|
+| 0.02 | 20 | 29,082,325 | 1.17x | 684 | 319 | 46.6% | 366 | 209 | 57.1% |
+| 0.05 | 50 | 72,717,240 | 2.93x | 13,109 | 2,369 | 18.1% | 2,363 | 894 | 37.8% |
+| 0.10 | 100 | 145,438,825 | 5.86x | 293,401 | 37,297 | 12.7% | 35,134 | 4,825 | 13.7% |
+| 0.20 | 200 | 290,896,124 | 11.71x | 1,242,523 | 238,781 | 19.2% | 441,349 | 60,876 | 13.8% |
+| 0.40 | 400 | 581,764,858 | 23.42x | 1,765,367 | 497,918 | 28.2% | 1,422,157 | 368,167 | 25.9% |
+| 0.70 | 700 | 1,018,088,521 | 40.99x | 2,106,429 | 788,135 | 37.4% | 1,881,855 | 606,413 | 32.2% |
+| 1.00 | 1000 | 1,454,425,153 | 58.55x | 2,314,396 | 976,575 | 42.2% | 2,012,384 | 694,743 | 34.5% |
+
+Marginal return, bsgenova phased SNPs per doubling of data:
+
+| step | reads x | phased SNPs x |
+|---|---|---|
+| 0.05 → 0.10 | 2.0 | **15.7** |
+| 0.10 → 0.20 | 2.0 | **6.4** |
+| 0.20 → 0.40 | 2.0 | **2.1** |
+| 0.40 → 0.70 | 1.75 | 1.58 |
+| 0.70 → 1.00 | 1.43 | 1.24 |
+
+### CONCLUSION — minimum donor-1 cell count for whole-genome pseudo-bulk phasing
+
+**The knee is at 100–200 cells (fraction 0.10–0.20, ~6–12x).** That is the answer the experiment was
+set up to produce:
+
+- **Below ~50 cells the question is moot.** At 20 cells only 684 het sites are callable genome-wide
+  and at 50 cells 13,109 — there is no whole-genome haplotype to speak of. The high phasing *rate*
+  at these depths (46.6% / 57.1%) is a selection artefact: the only sites callable at ~1x sit in the
+  deepest, easiest-to-link pileups. **At low depth, rate is a misleading metric; count is the
+  honest one.**
+- **100 → 200 cells is the takeoff**: 37,297 → 238,781 phased SNPs, a 6.4x gain for 2x the data,
+  and the phasing rate turns the corner (12.7% → 19.2%) — the point where enough sites are covered
+  by >=2 reads for links to form rather than for coverage to be spent discovering isolated sites.
+- **Above ~400 cells returns decay steadily** (2.1x → 1.58x → 1.24x per data doubling). 400 cells
+  buys 51% of the full 1000-cell phased yield, 700 cells 81%.
+
+Practical recommendation: **use ~200 donor cells as the working minimum** for whole-genome
+pseudo-bulk phasing of this data type, and ~400 if the analysis needs half the attainable phased-SNP
+count. Going beyond ~700 buys little — the last 300 cells add only 24%.
+
+Caveat: these are the *standard short-read* phasing numbers (no `--hic`); snMC-seq has no 3C
+contacts to exploit. Block contiguity is not part of this curve — only phased-SNP yield. The
+contiguity question is Task 1's (snM3C-seq), where the read-pairing fix produced Mb-scale blocks.
+
+### CHECKPOINTS (Task 2)
+- [x] envs rebuilt
+- [x] Stage 0: 1000-cell merged BAM rebuilt (/tmp) AND published+verified to mount `merged-BAM/rebuilt/` (1,454,425,153 reads; original path poisoned by the failed cp — see entry)
+- [x] fracs 0.02 / 0.05 / 0.10 / 0.20 / 0.40 / 0.70 each: downsample → genotype → preprocess → phase
+- [x] Stage 5: saturation_summary.csv on the mount (verified against local copy)
+- [x] conclusion: **knee at 100–200 cells**; working minimum ~200, ~400 for half of full yield
+
+## 2026-08-25 (16:00-17:00 UTC) — storage audit + plain-language summary (no new compute)
+
+### What this experiment found, in plain terms
+
+**The question.** Single-cell methylation data has far too little coverage per cell to phase
+anything. The fix is to pool many cells from the *same donor* into one "pseudo-bulk" sample and
+phase that. So: how many donor-1 cells do you actually need to pool?
+
+**How we answered it.** We built the full 1000-cell pool once (1.45 billion reads, ~58x), then threw
+reads away at random to simulate smaller pools — keep 2% of the reads and you have roughly a 20-cell
+experiment, keep 20% and you have roughly 200 cells, and so on. Each simulated pool went through the
+identical pipeline (call SNPs -> keep the heterozygous ones -> phase with HapCUT2), so the only thing
+that differs between points on the curve is how many cells' worth of data went in.
+
+**What we saw.**
+
+- **Under ~50 cells there is nothing to work with.** At 20 cells the whole genome yields just 684
+  heterozygous sites; at 50 cells, 13,109. You cannot call a variant you never covered, so there is
+  no genome-wide haplotype to build at all.
+- **The payoff arrives between 100 and 200 cells.** Phased SNPs jump from 37,297 to 238,781 — 6.4x
+  more output for 2x the data. This is where coverage stops being spent discovering isolated sites
+  and starts putting two or more reads across the *same* pair of sites, which is what actually links
+  them into a haplotype.
+- **After ~400 cells you are paying a lot for a little.** Doubling from 200 to 400 cells gains only
+  2.1x; the last 300 cells (700 -> 1000) add just 24%. 400 cells gets you 51% of the full 1000-cell
+  yield, 700 cells gets 81%.
+- **Practical answer: ~200 donor cells is the working minimum**, ~400 if you need about half of the
+  attainable phased-SNP count. Past ~700 it is not worth the sequencing.
+- **One trap worth knowing.** The phasing *rate* (share of het sites that get phased) looks its
+  best at the very lowest depth — 46.6% at 20 cells versus 42.2% at 1000. That is not real quality;
+  at ~1x the only callable sites are the handful sitting in unusually deep, easy-to-link pileups.
+  **At low depth, rate flatters you and count tells the truth.**
+- The bisulfite-aware caller (bsgenova) beat the naive caller at every depth, so the choice of
+  caller matters as much as a modest change in cell count.
+- **Scope limit:** this curve is about phased-SNP *yield* only. snMC-seq has no 3C contacts, so
+  nothing here says anything about how long the haplotype blocks are. Block length is the snM3C-seq
+  question — see the companion log, where a read-pairing fix produced megabase-scale blocks.
+
+### Storage audit — what is on the mount vs what stays in /tmp
+
+Audited every local deliverable against a size index of the published trees (363 files).
+
+| artefact | status |
+|---|---|
+| 1000-cell donor-1 merged BAM + `.bai` | **on the mount, re-verified today**: `quickcheck OK`, `idxstats` = 1,454,425,153 reads = the expected count, size 123,478,138,292 B |
+| per-fraction callsets (bsgenova + naive, `.vcf.gz` + `.snv.gz`) | 6/6 fractions x 4 files, all present |
+| per-fraction preprocessed het VCFs (+`.gz`/`.tbi`) | all present |
+| per-fraction phased sets (`.blocks`, `.blocks.phased.VCF`, `.fragments`) | 60/60 files present |
+| `saturation_summary.csv` | present |
+| per-fraction preprocessing logs | **were missing — 12 files published this session** |
+| downsampled BAMs (189 GB) | **deliberately NOT published** — only `.bai` per fraction |
+| per-shard genotyping intermediates (`gt/*/shards/*`, ~11k files) | not published, by design |
+
+The 1000-cell BAM lives at
+`data/snMC-seq_SNP_phasing_experiment/Science-snMC-seq/merged-BAM/rebuilt/H1930001_CX45_snMCseq_1000cells_merged.bam`
+(+ `.bai` beside it). It stays in `rebuilt/` because the canonical sibling path was poisoned by the
+failed `cp` last run. Moving it is not worth doing: there are **no icommands on this node** (`ils`,
+`imv`, `irm`, `icp` all absent, no `~/.irods`), so there is no server-side rename — a "move" would
+mean re-pushing 123 GB through the FUSE mount for ~8 h, to a path that would *still* have to be a
+new name. The file is complete, verified, and in the right experiment folder; only the extra
+directory level is cosmetic. (Note: a stray `H1930001_CX45_snMCseq_1000cells_merged.bam.bai` also
+sits one level up in `merged-BAM/`, left over from the failed attempt — harmless, but it is an index
+with no BAM beside it, so do not read it as evidence the BAM is there.)
+
+**USER DECISION: the downsampled BAMs are NOT published — omitted deliberately.** 189 GB of pure
+intermediate. Every one is regenerable from the published 1000-cell BAM with a single deterministic
+`samtools view -s` call, and their `.bai` indexes plus the callsets/phased sets derived from them are
+all published. Publishing them would have cost >12 h of mount transfer and roughly doubled the
+experiment's storage for no analytical gain. Raised as an explicit keep-or-drop question rather than
+dropped silently; the user chose to omit these and to keep Task 1's repaired 100-cell BAM instead.
+
+**So these 189 GB will be gone at the next node wipe, and that is intended.** To regenerate any
+point on the curve: downsample the published 1000-cell BAM at that fraction, then re-run genotyping
+and phasing. Nothing in the saturation table depends on the downsampled BAMs surviving.
+
+### Mount lesson added this session: verify AFTER a pause, never immediately
+
+Copying the 12 small preprocessing logs, 10 of 12 "failed" an immediate size comparison right after
+`cp` returned. Re-checked a minute later, all 12 were byte-correct. This is the same settling
+behaviour already documented for large chunked writes, and it bites small files too: **an immediate
+post-write `stat` on this mount is not a valid check.** Verification has to be retried after a
+delay, or a verify pass will report phantom failures (and, worse, tempt a re-copy to a path that is
+actually fine).
+
+## 2026-08-27 — Task 2 storage re-audit (no new compute) + `/tmp` teardown
+
+No Task 2 compute this session; the series has been complete since 08-25 11:35
+(`DOWNSAMPLE_ALL_DONE`). This entry exists to record a re-audit done before clearing `/tmp`, and
+one correction worth carrying forward.
+
+### The downsample series lives in its own top-level tree
+
+A first pass looked for the per-fraction outputs under
+`data/snMC-seq_SNP_phasing_experiment/` — where the 10-cell and 1000-cell work lives — found
+nothing, and briefly concluded the whole series was unpublished and about to be deleted with `/tmp`.
+That was wrong. The series was published on 08-25 to a **sibling tree**,
+`data/snMC-seq_downsample_series/`. Task 2's outputs are therefore split across two top-level
+directories, which is easy to miss:
+
+| tree | holds |
+|---|---|
+| `snMC-seq_SNP_phasing_experiment/` | 10-cell donor sets, the rebuilt 1000-cell BAM (`Science-snMC-seq/merged-BAM/rebuilt/`), full-depth callsets and phased sets |
+| `snMC-seq_downsample_series/` | everything per-fraction: callsets, preprocessed VCFs, phased sets, `.bai`s, `saturation_summary.csv` |
+
+**Before concluding anything is unpublished on this mount, list `workspace/data/` and check for a
+sibling tree.**
+
+### Verification result
+
+File-by-file size comparison of `/tmp/mc_downsample` against the mount: **139/139 files present and
+byte-identical** — 24 callsets (6 fractions x bsgenova/naive x `.vcf.gz`/`.snv.gz`), 48 preprocessed
+VCF files, 60 phased files, the 6 `.bai`, and `saturation_summary.csv`.
+
+One naming detail that makes a name-based diff mislead: the naive callsets are **renamed on
+publication**. Local `...frac0.02.naive.snv.gz` becomes `from-naive/...frac0.02.snv.gz` — the caller
+moves from the filename into the directory name. Compare on size, or account for the rename.
+
+Genuinely unpublished and fixed this session: the **6 `sharded_callers.log`** files (~21 KB each),
+one per fraction, now in each fraction's callset directory. Task 2 run logs (`progress.log`,
+`runner.log`, the per-fraction `gt_*`/`prep_*`/`phase_*` logs, `bigbam_publish.log`) published to
+`snMC-seq_downsample_series/run-logs/`.
+
+Still deliberately unpublished, unchanged: the **189 GB of downsampled BAMs** (user's standing
+decision — regenerable with one deterministic `samtools view -s` from the published 1000-cell BAM)
+and the **16,446 per-contig shard intermediates** under `gt/*/shards/`.
+
+### Teardown
+
+`/tmp/mc_downsample` (310 GB) deleted after the verification above. The 116 GB local copy of the
+1000-cell merged BAM is gone with it; the published copy at
+`Science-snMC-seq/merged-BAM/rebuilt/H1930001_CX45_snMCseq_1000cells_merged.bam` was re-confirmed at
+123,478,138,292 B before deleting. Task 2 now exists entirely on the mount.
+
+## NEXT UP — planned 2026-08-27, work paused for a few days
+
+Both experiments are complete, published and torn down (see the 2026-08-27 entry). Nothing is
+running; `/tmp` is empty; the node may be wiped before the next session, which is now harmless.
+
+Two pieces of work are queued, in this order:
+
+**1. Scale-up to donors 2 and 4, both assays.** So far only donor **H1930001** has a large-bulk
+phasing (1000 cells snMC-seq, 100 cells snM3C-seq); H1930002 and H1930004 exist only as 10-cell
+sets. Plan is to repeat the pseudo-bulk pipeline at larger cell counts for **H1930002 and H1930004
+in both snMC-seq and snM3C-seq**, giving three donors at comparable depth.
+
+Points to carry in from the completed work, so they are not rediscovered:
+- **Caller choice is depth-dependent.** bsgenova wins at 10 cells, naive wins at 100 (naive phased
+  31% more SNPs and had the higher phasing rate). At large bulk, run **both** and compare; do not
+  assume the 10-cell ordering holds.
+- **Run the snM3C read-pairing fix** (`repair_m3c_pairs.py`) before phasing, and pass
+  `extractHAIRS --hic 1` *and* `HAPCUT2 --hic 1`. This is what produced Mb-scale blocks at all.
+- **Naive HAPCUT2 is the long pole**: ~30 h at 100 cells vs ~9 h for bsgenova, and it scales with
+  graph size, not read count. Budget for it and launch it first.
+- Expect the same shape of result: more depth → *more* Mb-scale blocks, not *longer* ones.
+- Fence every launch (`taskset` disjoint blocks, `nice -n 19`, `ionice -c 3`) — the node hosts the
+  user's VSCode-server and saturation disconnects them.
+
+**2. Coverage and homozygosity of the results already obtained.** Not yet started. This is analysis
+over the *existing* published callsets and phasings — no new phasing needed:
+- **Coverage**: per-site and genome-wide depth behind the calls, and how coverage relates to which
+  sites got phased. `coverage-per-variant` is already in each `HAPCUT2.log` (32.7 bsgenova / 36.8
+  naive at 100 cells) as a starting point, but per-site distributions need computing from the BAMs.
+- **Homozygosity**: the het/hom breakdown of the callsets, runs of homozygosity, and whether
+  apparent homozygous stretches explain the gaps between phase blocks. Note the raw-vs-het counts
+  already recorded per callset (e.g. 100-cell: bsgenova 4,939,635 raw → 3,897,860 het; naive
+  5,242,025 → 4,389,230) — the difference is the homozygous+filtered fraction.
+- Both analyses can run off the mount copies; the source BAMs are all published.
+
+Also still open from earlier sessions, unchanged: there is **no truth haplotype** for these donors,
+so no absolute switch-error rate can be quoted — only the internal bounds recorded in the log
+(~18.5% same-caller split-half, ~28% cross-caller, both at >= 1 Mb, against a 50% null).
+
+## 2026-08-30 — donor-2 200-cell landed; donor-4 blocked on a NeMO outage; the `$TMUX` bug
+
+Session resumed after the 08-29 run stopped mid-flight. Nothing was running on the node when this
+session opened; `/tmp/mc_d2d4` and `/tmp/m3c_d2d4` survived, so both tasks are resumable in place.
+
+### What the 08-29 run actually finished
+
+**H1930002, snMC-seq, 200 cells — complete and published.** 190 cells downloaded on top of the 10
+already on the mount, merged to 225,256,293 reads / 22,928,029,037 B (published under
+`Science-snMC-seq/merged-BAM/published/`), both callers run, preprocessed, and phased in **standard
+mode** (no `--hic`; this is snMC, not snM3C):
+
+| caller | raw | het into HAPCUT2 | blocks | phased |
+|---|---|---|---|---|
+| bsgenova | 1,255,862 | 847,372 | 64,967 | 136,983 |
+| naive | 410,865 | 200,326 | 9,014 | 21,056 |
+
+Note the ordering **flips back to bsgenova at 200 cells** — bsgenova phased 6.5x more SNPs than
+naive here, the opposite of the 100-cell snM3C result. The depth-dependence warning in the 08-27
+"NEXT UP" was right; keep running both callers.
+
+All 24 output files verified on the mount (raw callsets, preprocessed het VCFs, `.blocks`,
+`.blocks.phased.VCF`, `.fragments`, both `HAPCUT2.log` and `extractHAIRS.log`, merged BAM + `.bai`).
+
+### H1930004 is one cell short
+
+Download reached **199/200**. The single miss is
+`HBA_211214_H1930004_CX45_A44_A45_1_P1-3-M14-N18`, which failed at 22:42 on 08-29 with
+`FAIL download` — curl exhausted all three tries against a server error. It is **not** a bad name:
+the cell is in `nemo_align_manifest.tsv` at line 330,672 with a valid size (303,575,040 B) and md5.
+The runner logged `INCOMPLETE (199/200) — will retry on re-run` and exited cleanly, so the stage
+markers make a re-run skip H1930002 entirely and pick up at donor-4's download.
+
+### NeMO Archive has been down for >24 h
+
+Down since **2026-08-29 16:12 UTC**; still down at 17:20 on 08-30. The failure is server-side and
+unambiguous: DNS resolves (134.192.156.50), TCP:443 connects in 0.09 s, TLS completes in 0.15 s, and
+then `nginx` returns **HTTP 502 after a 60 s upstream timeout** — or nothing at all within 45 s.
+Control requests to unrelated hosts return 200, so it is not this node's network.
+
+Both downloaders were re-audited against the manifest and are correct — this is worth recording so
+it is not re-litigated next time the archive misbehaves:
+- mC rows in the manifest hold a **bare cell name**, and `download_snMC-seq_bulk.sh` appends
+  `.final.bam.tar`;
+- m3C rows hold the **full filename** already (`....3C.sorted.bam.tar`), and
+  `download_snM3C-seq_more.sh` uses it verbatim;
+- both URL bases match their assay path (`mCseq/` vs `m3C-seq/`), and both md5-verify the tar
+  against the manifest before extracting.
+Every 08-29 failure was `FAIL download` (HTTP-level), never `FAIL md5`, `FAIL extract` or
+`FAIL size`.
+
+### Root cause: why Task B never started — never name a variable `TMUX`
+
+The 08-29 gate script did `TMUX=/opt/conda/envs/tmux/bin/tmux` and then `$TMUX new-session ...`
+twice. **tmux reads `$TMUX` as its own server socket path.** The first `new-session` therefore bound
+a unix socket *on top of the binary*, replacing `/opt/conda/envs/tmux/bin/tmux` with a
+`srw-------` socket; the mc task launched fine (rc=0), and the m3c task two lines later tried to
+exec a socket and died with **rc=126**. That single character of naming is the entire reason the
+snM3C donor-2/donor-4 work never ran.
+
+Fixed: socket deleted, tmux env recreated (tmux 3.7 verified), and the new
+`shell-scripts/nemo_gate_v2.sh` uses `TMUXBIN` and starts with `unset TMUX TMUX_PANE`. It also
+preflights that the path is actually executable before launching anything, so this fails loudly
+instead of silently dropping a task.
+
+### Armed for recovery
+
+`nemo_gate_v2.sh` is running in tmux session **`nemo-gate`** (probes the same real object with a
+1-byte ranged GET every 120 s, requires 2 consecutive 200/206, log at `/tmp/nemo_gate2.log`). On
+recovery it launches both tasks in their own fenced tmux sessions:
+`mc-d2d4` on cores 96-159 and `m3c-d2d4` on cores 32-95, both `nice -n 19 ionice -c 3`. It refuses
+to relaunch a session that already exists, and preflights the staged code, the reference `.fai`,
+`repair_m3c_pairs.py` and the tmux binary before waiting.
+
+### 2026-08-30 21:33 UTC — NeMO recovered; and a stale `.fail` marker nearly repeated the shortfall
+
+The archive came back after **99 probes / ~29 h down** (first 206 at 21:31, confirmed 21:33), and
+the fixed gate launched both tasks with `rc=0` this time — the `$TMUX` fix verified in the only way
+that matters: the binary was still a binary after the first `new-session`.
+
+Task A then hit a **second, independent bug that produced the identical symptom** (donor-4 stuck at
+199/200), and it is worth writing down because nothing in the runner log hints at it:
+
+```
+[21:47:41] === START producer(P_DL=6) + consumer(P_WR=3) for 1 files ===
+[21:47:42] SKIP (produce failed) HBA_211214_H1930004_CX45_A44_A45_1_P1-3-M14-N18
+[21:47:42] DL start  HBA_211214_H1930004_CX45_A44_A45_1_P1-3-M14-N18 (289 MB)
+```
+
+The consumer skipped the cell **one second before the producer started downloading it**. Cause: the
+`.fail` marker written when that cell failed on 08-29 at 22:42 was still in
+`/tmp/snmc_dl/staged/`. `write_one` waits on `[[ ! -e $name.ready && ! -e $name.fail ]]` and then
+checks `.fail` *first*, so a marker from a previous run short-circuits the wait immediately. The
+download then succeeded (303,566,688 B staged, md5 written, `.ready` touched) — and no consumer was
+left to copy it to the mount. The runner logged `INCOMPLETE (199/200)` and exited exactly as it had
+the day before, with a perfectly good BAM sitting in staging.
+
+**The v1 gate had masked this** by doing `rm -rf /tmp/snmc_dl /tmp/m3c_more_dl` before launching;
+v2 dropped that line, so the latent bug surfaced. Fixed two ways: the stale marker was deleted and
+Task A relaunched (the staged `.ready` is reused, so the cell is copied without re-downloading), and
+`nemo_gate_v2.sh` now purges `*.fail` from both staging trees before launching — purging just the
+markers rather than the whole tree, so good staged BAMs survive.
+
+**Lesson worth carrying: `.fail`/`.done`-style markers in a `/tmp` staging tree are only valid
+within a single run.** Any resumable pipeline that reuses a staging directory across runs must purge
+negative markers at startup, or it will deterministically re-skip exactly the items that failed last
+time — the ones it is being re-run to fix.
+
+### 2026-08-30 22:32 UTC — CRITICAL: donor-4's callset was donor-2's (shared shard scratch)
+
+Task A reported a donor-4 summary 30 minutes after the merge, which is impossible — donor-2's
+genotyping alone took 65 minutes. The numbers gave it away immediately:
+
+```
+[22:20:02] [H1930004/GT] sharded bsgenova + naive genotyping
+[22:20:31] [H1930004/GT] bsgenova records=1255862  naive records=410865   <- 29 SECONDS
+[22:23:15] [H1930004/PREP] het bsgenova=847372
+[22:23:15] [H1930004/PREP] het naive=200326
+```
+
+Every one of those four counts is **exactly** donor-2's. Confirmed by md5: donor-4's
+`.vcf.gz` (bsgenova) and donor-2's published bsgenova callset are the same file
+(`40a86e3f…`), likewise naive (`1ba6e721…`).
+
+**Cause — one `dirname` too many.** `run_sharded_callers.sh` had
+
+```sh
+SH="$(dirname "$OUT")/shards"      # OUT = /tmp/mc_d2d4/out/<DONOR>
+```
+
+so the per-contig scratch was `/tmp/mc_d2d4/out/shards` — **shared by every donor in the run**. The
+caller's resume gate skips any contig whose shard already exists ("Re-run to resume: finished shards
+are skipped"), which is correct within one callset and catastrophic across two. Donor-4 found all
+456 contigs x 2 callers sitting there from donor-2's 08-29 run, skipped genotyping entirely, and
+concatenated **donor-2's shards** into donor-4-named outputs.
+
+**What made it worse than an obvious duplicate:** the phasing that followed was *not* a duplicate.
+`extractHAIRS` ran on donor-4's real BAM, so the fragments were genuinely donor-4
+(76,911,236 B vs donor-2's 53,925,331 B) — the result was donor-2's variants phased against
+donor-4's reads, with plausible-but-wrong block counts (66,569 / 141,578 vs donor-2's 64,967 /
+136,983). Nothing about those numbers looks wrong in isolation. **The only reliable tell was the
+29-second GT and the exactly-equal record counts.** Worth checking both on every future multi-donor
+run.
+
+**Fix:** `SH="$OUT/shards"` — scratch keyed to the callset, not its parent. The same call pattern
+(`"$SHARDED" "$mbam" "$REF" "$OUT/$D" "$NAME"`) is used by `run_snM3C-seq_100cell_d2d4.sh`, so Task
+B's donor-4 would have inherited donor-2's callset in exactly the same way; it was still downloading
+when the fix landed, so it never got there. The downsample series was unaffected (one callset per
+fraction directory, so `dirname` happened to give each fraction its own scratch) and donor-2 was
+unaffected (it ran first, against empty scratch).
+
+**Cleanup:** the 22 invalid donor-4 files (396.9 MB — callsets, preprocessed VCFs, phased outputs)
+were deleted from the mount. Donor-4's **merged BAM is genuine and was kept** (357,187,360 reads,
+33,398,127,726 B, real donor-4 data). Local `GT`/`PREP`/`PHASE` markers and scratch cleared, `DL`
+and `MERGE` markers kept, and Task A queued to re-run with `DONORS=H1930004` once the merged-BAM
+publish finishes — GT onwards only, no re-download and no re-merge.
+
+### 2026-08-31 02:30 UTC — donor-4 re-run complete and verified distinct
+
+Genotyping onwards was re-run for H1930004 alone (`DONORS=H1930004`, DL and MERGE markers kept, so
+no re-download and no re-merge) with the per-donor shard scratch in place. It took **2h00m** against
+donor-2's 65 min — the right shape, given donor-4 carries 46 % more reads (357,187,360 vs
+225,256,293) and shared the node with Task B's repair step. All 456 contigs x 2 callers produced
+real shards (e.g. `SHARD_OK chr3 bsg=157006 naive=85440 5526s`).
+
+#### snMC-seq 200-cell pseudo-bulk, standard mode (no `--hic`), three donors
+
+| donor | caller | raw | het into HAPCUT2 | blocks | phased |
+|---|---|---|---|---|---|
+| H1930002 | bsgenova | 1,255,862 | 847,372 | 64,967 | 136,983 |
+| H1930002 | naive | 410,865 | 200,326 | 9,014 | 21,056 |
+| H1930004 | bsgenova | 2,268,560 | 1,432,952 | 140,680 | 304,917 |
+| H1930004 | naive | 1,260,616 | 708,448 | 53,339 | 117,403 |
+
+**bsgenova beats naive at 200 cells in both donors** — decisively, 6.5x more phased SNPs in donor-2
+and 2.6x in donor-4. Combined with naive winning at 100 cells (snM3C) and bsgenova winning at 10,
+the caller ordering is clearly not monotonic in depth and **must keep being tested per experiment**,
+not assumed.
+
+**Donor-4 is the richer sample by a wide margin, and by more than depth explains**: 46 % more reads
+but 81 % more bsgenova raw calls and 3.1x more naive raw calls. Its het fraction is also higher
+(naive 56 % of raw vs donor-2's 49 %). Donor-2's naive callset (410,865 raw -> 200,326 het) is the
+outlier here — small relative to its own bsgenova callset in a way donor-4's is not. Whether that is
+genuine donor biology (heterozygosity, ancestry) or a coverage-distribution effect is **exactly what
+the queued coverage/homozygosity analysis should answer**; do not quote the cross-donor comparison
+until it does.
+
+#### Verification that the shard bug is actually gone
+
+All eight comparable published artefacts were md5'd against donor-2's. **Every pair differs**:
+
+| artefact | donor-2 | donor-4 |
+|---|---|---|
+| from-bsgenova `.vcf.gz` | `40a86e3f` | `9409dd7e` |
+| from-bsgenova `.snv.gz` | `5b82e3a5` | `54cc9fff` |
+| from-naive `.vcf.gz` | `1ba6e721` | `f4863dfb` |
+| from-naive `.snv.gz` | `41d06da8` | `94cbe04d` |
+| bsgenova preprocessed `.vcf.gz` | `417997eb` | `d3258725` |
+| naive preprocessed `.vcf.gz` | `83bf8b17` | `a76be211` |
+| from-bsgenova `.blocks` | `aeda30bd` | `e1bc09f9` |
+| from-naive `.blocks` | `685a912b` | `38974ebc` |
+
+22 files republished. **Make this md5 cross-check a standing step for any multi-donor or
+multi-fraction run** — it is cheap, and it is the check that would have caught the shared-scratch bug
+in seconds rather than after a full bogus phasing run.
+
+snMC-seq scale-up is now COMPLETE for all three donors: H1930001 (1000 cells), H1930002 and
+H1930004 (200 cells each), all published with both callers.
+
+## 2026-09-02 16:20 UTC — coverage & homozygosity, snMC-seq side: donor-2's outlier is depth, and the gap problem is real here
+
+The analysis queued on 08-27 and run for snM3C-seq on 09-01 (see that log for the method and for
+findings 1-4) was extended to every snMC-seq result: donor-1 at 1000 cells, donors 2 and 4 at 200,
+all three at 10, and the six-fraction downsample series — 24 runs, which with the 6 snM3C runs
+makes 30, all error-free. It is analysis over published callsets and phasings only; no BAM was read, and the
+whole set takes about four minutes. Artefacts in
+`analyses/coverage-homozygosity-2026-09-02/`.
+
+Two things the snM3C entries assert do **not** hold here, and the difference is the point.
+
+### 1. "200 cells" is not deeper than "100 cells" — it is much shallower per site
+
+| run | het calls | median DP | het at DP >= 20 | het frac |
+|---|---|---|---|---|
+| snM3C 100c d2 bsgenova | 4,227,826 | 23 | 60 % | 0.801 |
+| snMC 1000c d1 bsgenova | 2,319,448 | 65 | 97.9 % | 0.619 |
+| snMC 200c d2 bsgenova | 844,504 | 13 | **5.0 %** | 0.672 |
+| snMC 200c d4 bsgenova | 1,426,975 | 17 | **31.7 %** | 0.629 |
+| snMC 200c d2 naive | 210,915 | 15 | 22.0 % | 0.513 |
+| snMC 200c d4 naive | 711,759 | 20 | 54.9 % | 0.565 |
+
+Both 200-cell runs sit almost entirely between DP 10 and DP 20 — that is, in the band immediately
+above the callers' hard DP >= 10 cutoff. Cell count is not depth: an snM3C cell contributes several
+times what an snMC cell does at this scale.
+
+### 2. Both open questions from 08-31 are answered, and one of them by retracting a reading
+
+**Why 46 % more reads gave donor-4 81 % more bsgenova calls.** Because calling is threshold-limited
+and donor-4's depth distribution sits further above the threshold: median DP 17 against 13, and
+**31.7 % of het sites at DP >= 20 against 5.0 %** — a 6.3x difference in the well-covered fraction
+out of a 1.46x difference in reads. Just above a hard cutoff, callset size is a steep function of
+depth, not a linear one.
+
+**Why donor-2's naive callset (410,865) is such an outlier.** Same mechanism, sharpened: naive's
+fixed thresholds need more depth than bsgenova's posterior model, and at donor-2's median DP of 13
+almost nothing clears them. This is the 08-27 rule — "bsgenova wins in exactly the low-coverage
+regime this project cares about" — now measured rather than inferred. Donor-4, two DP units deeper,
+gets 3.1x the naive calls.
+
+**Donor-4 is NOT the intrinsically richer sample; that reading is withdrawn.** 08-31 recorded
+"donor-4 is the richer sample by a wide margin, and by more than depth explains", citing its higher
+naive het fraction (56 % vs 49 %), while flagging that this analysis should settle it. It does, and
+against that reading: naive's het fraction is itself depth-dependent, and **bsgenova's het fraction
+is higher in donor-2 (0.672 vs 0.629)**, the reverse ordering. In snM3C, where both donors are well
+clear of the threshold, donor-2 is the richer callset on every column. The snMC cross-donor
+difference is a coverage-distribution effect and must not be quoted as donor biology.
+
+### 3. Finding 4 inverts: in standard mode the unphased sites really are in the gaps
+
+snM3C with `--hic 1`: 99.8 % of unphased het sites lie *inside* the span of a block, and all
+inter-block gaps together come to 32-38 Mb. snMC in standard mode is the mirror image:
+
+| | unphased in a block's span | in an inter-block gap | gaps | total gap span |
+|---|---|---|---|---|
+| snM3C 100c d2 bsgenova | 1,740,782 (99.8 %) | 2,608 (0.15 %) | 1,426 | 36.5 Mb |
+| snMC 1000c d1 bsgenova | **102 (0.008 %)** | 1,336,203 (99.9 %) | 312,998 | **2,957.6 Mb** |
+| snMC 200c d2 bsgenova | 50 (0.007 %) | 708,851 (99.8 %) | 63,008 | 2,953.3 Mb |
+| snMC 200c d4 bsgenova | 85 (0.008 %) | 1,126,270 (99.9 %) | 137,342 | 2,954.1 Mb |
+
+The total gap span is essentially the whole genome, and there are 63,000-313,000 gaps. Without
+Hi-C the blocks are short local islands separated by everything else; with `--hic 1` they are a
+sparse skeleton threaded across whole chromosomes. So **"there is no gap problem, only a per-site
+depth problem" is a statement about the `--hic 1` regime and does not generalise.** In standard
+mode there is a linkage problem, and it is the dominant one.
+
+### 4. At equal per-site depth, `--hic 1` phases 2-3x better
+
+Phasing rate by the site's own DP, which removes depth from the comparison entirely:
+
+| DP bin | snM3C 100c d2 bsg | snMC 1000c d1 bsg | snMC 200c d2 bsg | snMC 200c d2 naive |
+|---|---|---|---|---|
+| 10-14 | 0.4651 | 0.2777 | 0.1495 | 0.0525 |
+| 15-19 | 0.5268 | 0.3239 | 0.1753 | 0.0843 |
+| 20-24 | 0.5718 | 0.3916 | 0.2070 | 0.1414 |
+| 25-29 | 0.6119 | 0.4283 | 0.3454 | 0.3222 |
+| 30-39 | 0.6652 | 0.4562 | 0.5787 | 0.5866 |
+| 50-74 | 0.7998 | 0.4319 | 0.6434 | 0.6619 |
+| 100-149 | 0.9771 | 0.3589 | 0.7674 | 0.7110 |
+| >= 200 | 0.9998 | 0.9415 | 0.9829 | 0.9678 |
+
+The 1000-cell snMC column is the informative one: **three times the per-site depth of the snM3C
+run, and it phases worse in every bin below DP 200** — 0.42 overall against 0.57. It is also
+non-monotonic, peaking at DP 40-49 (0.459) and falling to 0.359 by DP 100-149, which no depth-only
+account can produce. This is the quantitative version of the claim already in this log that the
+Mb-scale blocks come from the Hi-C contacts and not from depth.
+
+### 5. The DP curve does not transfer across depth in standard mode — only within a regime
+
+The downsample series is the clean test, one donor, one assay, one caller, six depths. Applying one
+fraction's per-bin rates to another's depth distribution mispredicts badly: frac0.70 from frac0.20
+by **+50 %**, frac0.40 from frac0.70 by +28 %, frac0.10 from frac0.40 by +67 %, and the full
+1000-cell run from frac0.70 by -8.7 %. For comparison, the same test across *donors* within snM3C
+`--hic 1` errs by 0.4-2.7 %.
+
+The reason is visible in the bins: at a fixed DP, the phasing rate climbs with the depth of the run
+as a whole.
+
+| DP bin | frac0.10 | frac0.20 | frac0.40 | frac0.70 | full 1000c |
+|---|---|---|---|---|---|
+| 10-14 | 0.1127 | 0.1757 | 0.2066 | 0.2374 | 0.2777 |
+| 15-19 | 0.1850 | 0.1965 | 0.2520 | 0.2817 | 0.3239 |
+
+A site is phased when reads link it to its *neighbours*, so in standard mode what matters is the
+depth of the neighbourhood, not of the site. `--hic 1` substitutes long-range contacts for that
+neighbourhood, which is why the site's own DP becomes the binding constraint there and the curve
+becomes portable. **Quote a DP-vs-phasing curve only within its own (assay, mode, depth) regime.**
+Overall rates across the series, for budgeting: frac0.10 0.127, frac0.20 0.192, frac0.40 0.282,
+frac0.70 0.374, full 0.422. (frac0.02 is degenerate — 684 het sites, all in collapsed repeats.)
+
+### 6. No runs of homozygosity anywhere, in either assay
+
+The longest homozygous run in any of the 30 callsets is **500 kb** (donor-2 200c naive,
+chr14:37.1-37.6 Mb); in snM3C it is 200 kb. Real ROH is multi-Mb. The `low_het` and `blind`
+fractions are much larger in snMC (up to 18.5 % and 25.2 %) than in snM3C (0.6 % and 6.0 %), but
+that tracks callset sparsity — donor-2's naive callset leaves a quarter of all 100 kb windows with
+fewer than five calls — and not zygosity. The homozygosity hypothesis is closed in both assays.
+
+### 7. Caveat on the 10-cell comparisons, which are smaller than they look
+
+The 10-cell callsets contain **190 to 1,378 het sites genome-wide**, and the phased counts run
+106-384. The "bsgenova wins at 10 cells" ordering holds on counts in all three donors, but naive
+has the higher phasing *rate* in all three (d1 0.516 vs 0.456, d2 0.589 vs 0.480, d4 0.547 vs
+0.317). Both statements rest on a few hundred sites. Treat the 10-cell tier as a pipeline smoke
+test, not as evidence about callers.
+
+### Caveat carried over: extreme-depth pileups
+
+Donor-2's naive snMC callset has a DP p99 of **13,605** against a median of 15 — collapsed satellite
+repeats, the same artefact recorded on 09-01 for snM3C but far worse at low depth, and the reason
+its mean DP (351) is 23x its median. A `DP > 200` ceiling remains a cheap and defensible filter for
+any future run.
+
+## 2026-09-02 17:00 UTC — complete snMC-seq results table, and what does NOT exist
+
+Companion to the snM3C-seq log's table of the same timestamp. Every snMC-seq callset in the
+project, measured with one consistent tool rather than assembled from five weeks of runner logs.
+
+**Read the tier list first — donor-1 has no 200-cell run.** The three donors are not sampled at
+matching depths in this assay:
+
+| donor | snMC-seq tiers that exist |
+|---|---|
+| H1930001 | 10-cell, **1000-cell**, plus the 6-fraction downsample of the 1000-cell BAM |
+| H1930002 | 10-cell, 200-cell |
+| H1930004 | 10-cell, 200-cell |
+
+So a donor-1 point comparable to the 200-cell runs has to come from the downsample series, not
+from a 200-cell run. `frac0.20` of donor-1's 1000-cell BAM is the closest match by construction.
+
+### snMC-seq main cohort, standard mode (no `--hic`)
+
+| donor | cells | caller | raw calls | het calls | het offered | phased | phasing rate |
+|---|---|---|---|---|---|---|---|
+| H1930001 | 10 | bsgenova | 1,166 | 869 | 792 | 361 | 0.4558 |
+| H1930001 | 10 | naive | 660 | 440 | 419 | 216 | 0.5155 |
+| H1930002 | 10 | bsgenova | 421 | 292 | 271 | 130 | 0.4797 |
+| H1930002 | 10 | naive | 306 | 190 | 180 | 106 | 0.5889 |
+| H1930004 | 10 | bsgenova | 1,712 | 1,378 | 1,211 | 384 | 0.3171 |
+| H1930004 | 10 | naive | 688 | 485 | 457 | 250 | 0.5470 |
+| H1930002 | 200 | bsgenova | 1,255,862 | 844,504 | 847,372 | 137,155 | 0.1619 |
+| H1930002 | 200 | naive | 410,865 | 210,915 | 200,326 | 21,057 | 0.1051 |
+| H1930004 | 200 | bsgenova | 2,268,560 | 1,426,975 | 1,432,952 | 305,197 | 0.2130 |
+| H1930004 | 200 | naive | 1,260,616 | 711,759 | 708,448 | 117,414 | 0.1657 |
+| H1930001 | 1000 | bsgenova | 3,749,921 | 2,319,448 | 2,314,396 | 976,750 | 0.4220 |
+| H1930001 | 1000 | naive | 3,423,882 | 2,040,577 | 2,012,384 | 694,795 | 0.3453 |
+
+### Donor-1 downsample series (fractions of the 1000-cell BAM)
+
+| fraction | caller | raw calls | het calls | het offered | phased | phasing rate |
+|---|---|---|---|---|---|---|
+| 0.02 | bsgenova | 981 | 736 | 684 | 319 | 0.4664 |
+| 0.02 | naive | 574 | 383 | 366 | 209 | 0.5710 |
+| 0.05 | bsgenova | 17,258 | 13,324 | 13,109 | 2,372 | 0.1809 |
+| 0.05 | naive | 4,013 | 2,438 | 2,363 | 894 | 0.3783 |
+| 0.10 | bsgenova | 411,078 | 292,423 | 293,401 | 37,331 | 0.1272 |
+| 0.10 | naive | 81,912 | 35,455 | 35,134 | 4,826 | 0.1374 |
+| 0.20 | bsgenova | 1,923,190 | 1,237,316 | 1,242,523 | 239,048 | 0.1924 |
+| 0.20 | naive | 832,852 | 442,496 | 441,349 | 60,888 | 0.1380 |
+| 0.40 | bsgenova | 2,980,527 | 1,759,780 | 1,765,367 | 498,146 | 0.2822 |
+| 0.40 | naive | 2,463,871 | 1,427,310 | 1,422,157 | 368,204 | 0.2589 |
+| 0.70 | bsgenova | 3,491,016 | 2,104,343 | 2,106,429 | 788,324 | 0.3742 |
+| 0.70 | naive | 3,211,741 | 1,898,429 | 1,881,855 | 606,465 | 0.3223 |
+
+The `frac0.20` comparison confirms the 09-02 depth reading: donor-1 at a fifth of its 1000-cell
+depth reaches 0.1924, between donor-2's 200-cell 0.1619 and donor-4's 0.2130. The three donors
+behave the same way once depth is matched — which is the point of the entry above, that the
+cross-donor differences in this assay are coverage, not biology.
+
+Also visible here: **bsgenova leads naive at every fraction from 0.05 up, and the gap closes as
+depth rises** (6.1x more raw calls at 0.05, 1.09x at 0.70). Extrapolating that trend is what the
+snM3C 100-cell result then confirms — naive overtakes once depth is ample. The `frac0.02` row is
+degenerate (684 het sites, all in collapsed repeats) and should not be read as a data point.
+
+Column definitions and the `het calls` vs `het offered` discrepancy are explained in the snM3C log's
+17:00 entry; briefly, HapCUT2 preprocessing both drops sites and splits multi-allelic ones, and the
+phased counts here join on `(chrom, pos)`, running ~0.16 % above the per-record totals in the runner
+logs.
+
+### Housekeeping
+
+Analysis artefacts moved to `workspace/coverage-homozygosity-computation/` (36 runs, md5-verified),
+`workspace/data/README.md` now documents the whole data hierarchy, and `/tmp` is clear.
