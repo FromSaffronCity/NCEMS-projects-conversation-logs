@@ -156,6 +156,30 @@ Per-site depth medians for orientation: snM3C 100-cell 21–28; snMC 1000-cell 6
 **13–20** — i.e. 200 snMC cells are much *shallower* per site than 100 snM3C cells. Cell count is
 not depth.
 
+### Depth vs. linkage — the two regimes, mechanistically
+
+The two assays are limited by different things, and the whole difference reduces to one
+distinction: **what a site's phasing depends on.**
+
+- **snMC-seq (standard) is linkage-limited.** A het site phases only if a read or read pair
+  spans it *and* an adjacent het, so its fate depends on its **neighbours'** depth. An isolated
+  deep site with shallow neighbours strands; 99.8 % of unphased het sites lie *between* blocks.
+- **snM3C-seq (`--hic 1`) is depth-limited.** A long-range Hi-C contact can link a site from
+  anywhere on the chromosome, so its fate depends on its **own** depth; 99.8 % of unphased het
+  sites lie *inside* block spans.
+
+Hi-C linkage therefore does not merely add information — it **decouples** a site's phasing from
+its local neighbourhood. This is why, at equal per-site depth, snM3C-seq phases a higher
+*fraction* of het sites (compare rate, not raw counts — absolute totals also ride on callset
+size). The evidence is indirect but strong: the depth→phasing-rate curve transfers across donors
+(0.4–2.7 % error) yet breaks across assays (~200 %, §7 item 3). That ~200 % gap *is* the linkage
+premium, quantified.
+
+**Not yet directly measured.** The equal-depth claim rests on the depth curve failing to transfer,
+not on a controlled comparison. Binning het sites by DP in both assays and comparing phasing rate
+bin-for-bin would turn "strongly inferred" into "directly measured" — cheap, since every callset
+and `.blocks` file already carries per-site DP.
+
 ## 8. Conclusions
 
 1. **Statistical phasing (SHAPEIT5) does not work** for this data — the calls are low-coverage
