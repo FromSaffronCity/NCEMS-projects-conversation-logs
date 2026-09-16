@@ -2117,3 +2117,95 @@ differently.
   folder holds, what every file extension means, which BAMs were published and which deliberately
   were not, and the two mount cautions.
 - `/tmp` is clear. Nothing is running on the node.
+
+---
+
+## 2026-09-14 — VALIDATION PHASE: task plan (cross-region replication + author genotype truth set)
+
+All CX45 work (both assays, three donors, both callers, coverage/homozygosity analysis) is complete.
+The next phase is to **validate** those results, along two independent lines. **Nothing below has
+been started yet** — this entry records the plan so it survives a node wipe/disruption.
+
+### Task 1 — cross-region replication (this log covers the snM3C-seq half)
+
+Repeat the pipeline on **two more human brain regions** (regions other than CX45; specific regions
+TBD with the user, and must exist for the chosen donor(s)). Goal: **test whether the CX45 phasing
+trends replicate in different brain regions.**
+
+For EACH new region, the snM3C-seq arm is **deliberately different from CX45**:
+- **snM3C-seq pseudo-bulk at 10 nuclei**, and
+- **a large tier whose nuclei count is chosen so its READ DEPTH matches the 200-nuclei snMC-seq
+  pseudo-bulk** for the same region (**not** a fixed 100 nuclei as at CX45).
+  - *Rationale:* this makes the snMC-vs-snM3C comparison **depth-matched**, which CX45 was not — the
+    CX45 CHECKPOINT-10 entry flagged that the two assays were compared at unequal depth and that a
+    depth-matched, bin-for-bin comparison was the missing piece. This design supplies it directly.
+  - *Detail to settle before scoping the cell count:* snM3C reads are far deeper per cell AND shorter
+    (~71–74 bp vs snMC ~124–125 bp), so "match the read depth" needs a defined basis — read **count**
+    vs **base** count. From CX45, ~100 snM3C cells ≈ 780–870 M reads vs 200 snMC cells ≈ 225–357 M
+    reads, so a read-count match implies only ~25–45 snM3C cells while a base-count match implies
+    more. Confirm the basis with the user; the count is likely region/donor-specific, determined
+    empirically from that region's 200-nuclei snMC merged read total.
+- **Both callers.** Run `repair_m3c_pairs.py` before phasing, then `extractHAIRS --hic 1` **and**
+  `HAPCUT2 --hic 1` (this is what produced Mb-scale blocks at all). 3C downloads are queryname-sorted
+  `.3C.sorted.bam` → coordinate-sort + index first. Naive HAPCUT2 is the long pole (~30 h at 100
+  cells, scales with graph size not reads) — launch it first.
+- Compare phased count / rate / block spans / blocks ≥1 Mb and the caller ordering against the CX45
+  snM3C baselines, and against the region's own depth-matched 200-nuclei snMC run from Task 1.
+
+The snMC-seq half of Task 1 (10 + 200 nuclei per region, standard mode) is planned in the companion
+`snMC-seq_SNP_phasing_experiment.md`.
+
+### Task 2 — validate against the authors' genotype dataset (cross-cutting; applies to both assays)
+
+The original Science-paper authors provided **genotyping data** for these donors. **Details are not
+yet known** — first step is to obtain/inspect it and characterise it together with the user (what
+platform: array vs WGS; which donors; which sites; hg38 coordinates?; genotypes only, or phased?).
+Then decide how it can validate our phasing, and run that validation.
+
+Why this matters: the single biggest limitation on record is that **no truth haplotype exists for
+these donors**, so only internal consistency bounds could be quoted (~18.5% same-caller split-half,
+~28% cross-caller at ≥1 Mb, vs a 50% null). An external genotype/truth set could enable, depending on
+what it contains:
+- **genotype concordance** of our bsgenova/naive het calls against the authors' genotypes — caller
+  accuracy, addressing the "what fraction of the het calls are real" caveat; and
+- if the authors' data is itself phased (or trio/family-phased), an **absolute switch-error rate**
+  for our HapCUT2 haplotypes — the number this project has never been able to compute.
+
+### To carry in (do not rediscover)
+- Node is EPHEMERAL; rebuild envs from `workspace/environments/`. FUSE mount rules stand: stage in
+  `/tmp`, md5-verify both ways, **never `>>`-append on the mount** (it NUL-fills the file), publish
+  big files chunked to a **fresh** path, `rm` works but re-using a poisoned path does not.
+- Run **both callers** every time — caller ranking tracks the assay/depth regime, not the
+  donor/region.
+- The snM3C read-pairing fix (`repair_m3c_pairs.py`) is **mandatory** before phasing; without it
+  `extractHAIRS --hic 1` sees `PE-fragments 0` and silently degrades to sub-kb short-read blocks.
+
+### 2026-09-16 — validation experiment in progress (see snMC log for the detail); snM3C arm queued
+
+The cross-region validation is running. **snMC-seq half:** per-cell downloads for all 6 combos
+(CX47 d1/d2/d4, CX46 d1/d2, CB63 d4) essentially complete (5 at 200, CX46/d2 at 196, CB63
+downloading last); phasing runs next. Two bugs were found and fixed today — a merge too brittle for
+the mount (staged with 8-way concurrency → tripped the mount's concurrency-read failures; now NP=3 +
+5× retry + small tolerance) and download↔phasing **mount contention** (both hammering the ~8 MB/s
+iRODS mount → ~0.4 MB/s crawl). Fix: `run_validation_master.sh` **serialises** downloads then phasing
+(tmux `val-master`). **Full detail in `snMC-seq_SNP_phasing_experiment.md`, 2026-09-16 entries.**
+
+**snM3C arm — queued to run autonomously after snMC finishes:** downloads → `repair_m3c_pairs.py` →
+`extractHAIRS/HAPCUT2 --hic 1`; tiers = 10 nuclei + a tier **base-depth-matched to the 200-cell
+snMC** (per the user's decision — match total aligned bases, not read count). Same discipline:
+**never stage/merge and download at the same time** (that was today's hard lesson).
+
+**Validation Task 2 (ground-truth genotypes) resumes 2026-09-17:** author genotyping data lives on
+**Anvil** at `/anvil/projects/x-bio260019/donor_genomes`; transfer to CyVerse
+`workspace/data/donor_genomes` runs **from an Anvil login node** (Anvil not mounted here; SSH needs
+interactive MFA) via `gocmd put -r` inside tmux, or Globus. Exact commands + rationale recorded in the
+snMC log's 2026-09-16 end-of-day entry.
+
+### 2026-09-16 (later) — ground-truth genotypes in hand (Validation Task 2)
+
+Author WGS genotypes transferred Anvil→CyVerse **`workspace/data/donor_genomes`** and **verified
+complete + intact** for all 3 donors. Per donor: `<D>.final.vcf.gz`+`.tbi` = single-sample
+`HBAgenomics` WGS calls (**UNPHASED**, ~57% het); `<D>.hg38.fa`+`.fai` = the per-donor SNP-substituted
+reference; `<D>.homosnp.chrfixed.vcf.gz`. Validation design — genotype concordance (direct) and a
+phasing/switch-error route that needs a phased-truth decision (WGS is unphased) — to be worked out
+2026-09-17. Full detail + the FUSE readdir lesson in the snMC log's "2026-09-16 (later)" entry.

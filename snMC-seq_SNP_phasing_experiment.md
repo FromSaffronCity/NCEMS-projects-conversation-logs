@@ -2529,3 +2529,239 @@ logs.
 
 Analysis artefacts moved to `workspace/coverage-homozygosity-computation/` (36 runs, md5-verified),
 `workspace/data/README.md` now documents the whole data hierarchy, and `/tmp` is clear.
+
+---
+
+## 2026-09-14 — VALIDATION PHASE: task plan (cross-region replication + author genotype truth set)
+
+All CX45 work above (both assays, three donors, both callers, coverage/homozygosity analysis) is
+complete. The next phase is to **validate** those results, along two independent lines. **Nothing
+below has been started yet** — this entry records the plan so it survives a node wipe/disruption.
+
+### Task 1 — cross-region replication (this log covers the snMC-seq half)
+
+Repeat the phasing pipeline on **two more human brain regions** (regions other than CX45; the
+specific regions are TBD with the user and must exist for the chosen donor(s) — recall CX45 was
+picked in S6 because CX56 was absent for H1930004). Goal: **test whether the phasing trends observed
+for CX45 replicate in different brain regions.**
+
+For EACH new region, the snMC-seq arm mirrors CX45 exactly:
+- **snMC-seq pseudo-bulk at 10 nuclei** and **at 200 nuclei** (`samtools merge` of the largest-N
+  cells of that region, standard short-read HapCUT2 — **no `--hic`**), **both callers**
+  (bsgenova + naive).
+- Compare raw/het/phased counts, phasing rate, block structure, and the caller ordering against the
+  CX45 baselines already tabulated (e.g. snMC 200-cell: bsgenova beat naive 6.5×/2.6×; the
+  linkage-limited / DP-curve findings from the 09-02 coverage analysis).
+
+The snM3C-seq half of Task 1 (10 nuclei + a **depth-matched** large tier) is planned in the
+companion `snM3C-seq_SNP_phasing_experiment.md`; the two arms are designed to be **depth-matched**
+this time — the M3C large tier's nuclei count is chosen so its read depth matches the 200-nuclei
+snMC-seq pseudo-bulk, rather than the fixed 100 nuclei used at CX45.
+
+### Task 2 — validate against the authors' genotype dataset (cross-cutting; applies to both assays)
+
+The original Science-paper authors provided **genotyping data** for these donors. **Details are not
+yet known** — first step is to obtain/inspect it and characterise it together with the user (what
+platform: array vs WGS; which donors; which sites; hg38 coordinates?; genotypes only, or phased?).
+Then decide how it can validate our phasing, and run that validation.
+
+Why this matters: the single biggest limitation on record is that **no truth haplotype exists for
+these donors**, so only internal consistency bounds could be quoted (~18.5% same-caller split-half,
+~28% cross-caller at ≥1 Mb, vs a 50% null). An external genotype/truth set could enable, depending on
+what it contains:
+- **genotype concordance** of our bsgenova/naive het calls against the authors' genotypes — caller
+  accuracy, addressing the "what fraction of the ~2.3 M het calls are real" caveat; and
+- if the authors' data is itself phased (or trio/family-phased), an **absolute switch-error rate**
+  for our HapCUT2 haplotypes — the number this project has never been able to compute.
+
+### To carry in (do not rediscover)
+- Node is EPHEMERAL; rebuild envs from `workspace/environments/`. FUSE mount rules stand: stage in
+  `/tmp`, md5-verify both ways, **never `>>`-append on the mount** (it NUL-fills the file), publish
+  big files chunked to a **fresh** path, `rm` works but re-using a poisoned path does not.
+- Run **both callers** every time — caller ranking tracks the assay/depth regime, not the
+  donor/region.
+- Coverage/homozygosity tooling (`callset_depth.py`, `phasing_vs_depth.py`, `roh_analysis.py`,
+  `predict.py`, `mktable.py`, `run_covhom_jobs.sh`) is reusable on any new callset.
+
+### 2026-09-14 (cont.) — VALIDATION EXPERIMENT LAUNCHED (Task 1 regions chosen; snMC downloads running)
+
+**Regions chosen** (from a manifest tally of nuclei in BOTH assays across the 3 donors; only
+CX45–CX48 and, for anatomical diversity, CB63/H1930004 clear a per-donor ≥200 snMC/≥50 snM3C bar):
+- **CX47** — all three donors (H1930001, H1930002, H1930004)
+- **CX46** — donors 1 and 2
+- **CB63** (cerebellum) — donor 4 only  → the only feasible non-cortex option (snM3C is
+  cortex-concentrated in this study; BS91 has 0 snM3C for all donors so was rejected).
+→ **6 donor×region combos.** Correction logged: CX45 was originally chosen because it was common to
+all 3 donors, not for coverage (coverage came from the largest-N cell selection).
+
+**Tier design** (per combo): snMC 10 + 200 nuclei (standard mode); snM3C 10 + a tier
+**depth-matched to the 200-nuclei snMC**. **DECISION (user, 2026-09-14): match on per-base genome
+coverage = total aligned BASES** (user's words: "the number of reads covering a certain base"), NOT
+raw read count — snM3C reads are ~half as long (~72 vs ~125 bp) so this needs ~1.7× more snM3C
+nuclei than a read-count match. Rationale: this reproduces the equal-depth setup behind the CX45
+finding the user wants to retest — that at matched per-site depth, snM3C (`--hic 1`) genotyped/phased
+better than snMC. The snM3C nuclei count will be finalised per combo after the 200-cell snMC
+pseudo-bulks merge (total bases = reads × mean read length); select snM3C largest-N until cumulative
+bases ≈ the 200-cell snMC bases. Both callers throughout.
+
+**Layout:** new clean tree `data/phasing-validation-2026-09/<REGION>/{Science-snMC-seq,
+Science-snM3C-seq}/<DONOR>/`, plus `merged-BAM/`, `bisulfite-aware-SNPs/`, `phased-from-HapCUT2*/`
+mirroring CX45 (kept separate so validation outputs don't mix with CX45).
+
+**Node/env (this session):** ephemeral node, 128 cores / 479 GB free / 6.9 TB /tmp. Rebuilt envs
+(bsgenova, htslib-tools, hapcut2, samtools 1.9, tmux) via `/tmp/env_build.sh`; code staged to
+`/tmp/snm3c_local/`, reference to `/tmp/snm3c_phase/hg38_chrL.fa`. Added a `DEST` env override to
+`download_snMC-seq_bulk.sh` (snM3C downloader already had one) so downloads route into the region tree.
+
+**RUNNING NOW:** `dl_validation_snMC.sh` (in `/tmp/snm3c_local/shell-scripts/`) — downloads the 200
+largest snMC tars per combo, **sequentially** (one combo at a time, so concurrent mount writes can't
+contend/poison paths), P_DL=6/P_WR=3, `nice -n 15 ionice -c 3`. Disconnection-safe: `setsid nohup`
+launch **plus** tmux session `val-snmc-dl`; log `/tmp/val_snmc_dl.log`; resumable via each combo's
+`<DEST>/.bulk_dl_done/`. First combo CX47/H1930001 downloading (tars ~450–600 MB → ~100 GB/combo).
+
+**NEXT (queued, not started):** (1) region+tier-aware snMC phasing orchestrator — merge largest-10 &
+largest-200 → sharded bsgenova+naive → HapCUT2 preprocess → HAPCUT2 **standard** → publish; fence CPU
+(`taskset`/`nice`/`ionice`), limit combo concurrency. (2) resolve depth-match basis, then snM3C
+downloads + `repair_m3c_pairs.py` + `extractHAIRS/HAPCUT2 --hic 1`. (3) log results vs CX45 baselines.
+
+**snMC phasing now AUTONOMOUS (built + launched 2026-09-14 17:03).** Two new scripts, persisted to
+`shell-scripts/` and staged in `/tmp/snm3c_local/shell-scripts/`:
+- `run_validation_snMC.sh` (REGION/DONORS/TIERS-parameterized): per donor, per tier ∈ {10,200},
+  region-filtered largest-N merge (`ls -S …*_${REGION}_*.final.bam | head -N` — fixes the CX45
+  script's un-filtered `head` that would grab the wrong region), sharded bsgenova+naive → HapCUT2
+  preprocess → HAPCUT2 standard (no `--hic`) → publish to the region tree. Records reads+mean-read-len
+  +bases per merged BAM to `snMC_depth.tsv` (feeds snM3C depth-matching). Reference gated on the
+  `/tmp/snm3c_phase/.ref_done` marker so a partial ref can't truncate GT. Merged BAMs published to
+  mount (`PUBLISH_BIG_BAM=1`, user's keep-a-copy directive; backgrounded, serialized via a global
+  flock).
+- `supervise_validation_snMC.sh` (tmux `val-snmc-phase`, `setsid nohup`): polls every 1500 s; when a
+  combo shows ≥200 cells on the mount it runs the orchestrator for it, **fenced to cores 0-63**
+  (`taskset`), `nice -18 ionice -c3`, one combo at a time so downloads + VSCode-server stay
+  responsive. Combo "done" is judged from the 4 published phased VCFs on the mount (survives a node
+  wipe; /tmp markers do not). SHARD_CONC=16.
+- Monitoring: download log `/tmp/val_snmc_dl.log`, phase log `/tmp/val_snmc_phase.log`, per-combo
+  `/tmp/val_mc_<REGION>_<DONOR>.log`. Both tmux sessions: `val-snmc-dl`, `val-snmc-phase`.
+- Status at handoff: envs+ref+downloads all healthy; CX47/H1930001 first to download (~11/200 cells,
+  large ~400-600 MB tars). snM3C half (downloads + repair + `--hic 1`, depth-matched by BASES) is the
+  next build, and depends on the 200-cell snMC merges for its per-combo cell counts.
+
+### 2026-09-16 — progress check + a CRITICAL merge-robustness bug found and fixed
+
+**State after ~2 days.** Downloads (still running): CX47/d1 198/200, CX47/d2 200, CX47/d4 194,
+CX46/d1 200, CX46/d2 ~144 (downloading), CB63/d4 0 (queued last). BUT phasing had produced **almost
+nothing** — only CX47/d2's 10-cell tier phased. Cause below.
+
+**Bug: the 200-cell merge was too brittle for this mount, and blocked every 200-tier.** `stage_idx`
+copied cells from the mount with **8-way concurrency** (`xargs -P 8`), which reliably triggers the
+documented "mount fails reads under concurrency" — so per pass a *varying* handful of cells failed
+to stage (STAGE_FAIL_IDX at different cells each time: merges aborted at 141/174/179/182/183/199…),
+and the strict `staged ≥ T` gate aborted the whole tier. The supervisor then re-ran every 25 min for
+2 days, never converging (cheap, because staged cells are cached/skip-reused, but zero 200-tier
+output). A few cells are also *persistently* bad (e.g. CX47/d2's `…LEC_1_P6-5-J20-P21` failed ~38×) —
+likely truncated mount objects.
+
+**Fix (in `run_validation_snMC.sh`, re-persisted):**
+- staging concurrency **NP 8→3** (avoids the mount's concurrency-read failures);
+- `stage_idx` now **retries the whole cp→quickcheck→index up to 5×**, deleting+re-copying each time
+  (a truncated copy self-heals; only STAGE_FAIL after all 5);
+- **oversample + tolerance**: pull POOL = T+ (10 for 200-tier / 3 for 10-tier) largest candidates,
+  merge the largest T that stage cleanly, and proceed if `staged ≥ T−TOL` (TOL=4 for 200, 1 for 10) —
+  so 1-few unrecoverable cells can't block a ~200-cell bulk (actual cell count logged; the depth-match
+  uses actual reads anyway). Supervisor `READY_MIN=196` matches this.
+- **`PUBLISH_BIG_BAM=0`** for the run: the ~50 GB merged BAMs are NOT published during the run
+  (concurrent multi-GB mount writes are the poisoning risk, and they're reproducible from the per-cell
+  BAMs already on the mount). Callsets + phased VCFs (the deliverables) are still published.
+- Killed the spinning supervisor + stale pass, relaunched (tmux `val-snmc-phase`, `POLL=600`).
+  **Verified live:** CX47/d1 now staging at NP=3, no failures. Downloads (`val-snmc-dl`) left running.
+
+**Still to do:** (a) CX47/d4 is 194 — needs a small download mop-up to ≥196 (do after the main
+downloader finishes CB63, to avoid concurrent mount writes); (b) let phasing converge across all 6
+combos (GT ~1-2 h per 200-cell bulk); (c) then build the snM3C arm (depth-matched by bases).
+
+### 2026-09-16 (cont.) — SECOND problem: download↔phasing MOUNT CONTENTION; restructured to serial phases
+
+Right after relaunching the fixed supervisor, the mount **crawled to ~0.4 MB/s** — a 50 MB read timed
+out. Cause: the phasing **staging** (heavy mount READS) was running at the same time as the
+**downloads** (heavy mount WRITES). This ~8 MB/s iRODS mount is effectively single-stream; concurrent
+reads+writes starve each other. So the "overlap CPU phasing with I/O downloads" design was wrong —
+*staging* is mount-I/O, not CPU, and it contends. (A stale `samtools quickcheck` sweep I'd launched
+to hunt corrupt cells was also still hammering mount reads — killed it.) The contention had also hurt
+downloads: CX46/H1930002 landed only **153/200**, CX47/d1 198, CX47/d4 194.
+
+**Fix — serialise the two mount-heavy phases (`run_validation_master.sh`, tmux `val-master`):**
+- **PHASE 1** download-completion loop: re-runs `dl_validation_snMC.sh` (resumable, skips present)
+  up to 8 rounds until every combo has ≥196 cells — with the mount to itself.
+- **PHASE 2** `exec` the phasing supervisor only after downloads are done → staging runs at full
+  mount speed, and GT/phasing (CPU) no longer competes with any mount writes.
+- Killed the old download driver + phasing supervisor; single `val-master` process now owns both
+  phases in order. `setsid nohup` + tmux; logs `/tmp/val_master.log`, `/tmp/val_snmc_dl.log`.
+
+Note: the mount was in a genuinely slow spell (a fresh 100 MB read stayed >1.6 MB/s even with only
+the downloader's own seed-quickcheck active) — partly inherent iRODS variability, so downloads will
+take a while. Lesson for the snM3C arm: **never run staging/merge and downloads at the same time.**
+
+### 2026-09-16 END-OF-DAY status (work pauses; resumes tomorrow with the Anvil genotype transfer)
+
+**The serialised master fixed both problems — downloads recovered fast once the mount was
+uncontended.** snMC per-cell downloads now essentially complete:
+
+| combo | cells | | combo | cells |
+|---|---|---|---|---|
+| CX47/H1930001 | **200** | | CX46/H1930001 | **200** |
+| CX47/H1930002 | **200** | | CX46/H1930002 | **196** (mopped up from 153) |
+| CX47/H1930004 | **200** (from 194) | | CB63/H1930004 | downloading (last combo, 0→~200) |
+
+`run_validation_master.sh` (tmux `val-master`, `setsid nohup`) is in **PHASE 1** finishing CB63; when
+CB63 reaches ≥196 it `exec`s **PHASE 2** = the fixed phasing supervisor, which genotypes+phases all 6
+combos (both tiers, both callers, standard mode) with the low-concurrency/retry/tolerance merge and
+**no** download contention. Only 2 phased VCFs exist so far (a leftover CX47/d2 10-cell tier); real
+phasing output starts once PHASE 2 launches. Everything disconnection-safe and resumable; logs
+`/tmp/val_master.log`, `/tmp/val_snmc_dl.log`, `/tmp/val_mc/<REGION>/progress.log`.
+
+**Autonomous plan (no user input needed):** snMC phasing → then the **snM3C arm** (downloads →
+`repair_m3c_pairs.py` → `extractHAIRS/HAPCUT2 --hic 1`, tier = 10 + **base-depth-matched to the
+200-cell snMC**), built with the same serial-phase discipline (never stage/merge while downloading).
+
+**Validation Task 2 — ground-truth genotypes (resumes 2026-09-17):**
+- **Source dataset:** author-provided genotyping data on the **Anvil** server at
+  `/anvil/projects/x-bio260019/donor_genomes`. Contents/format not yet inspected.
+- **Destination:** CyVerse Data Store `workspace/data/donor_genomes`
+  (= `/iplant/home/ajmain1yasar9ahmed/workspace/data/donor_genomes`).
+- **Transfer method (chosen):** run **from an Anvil login node** (Anvil is NOT mounted on the CyVerse
+  node, and Anvil SSH needs interactive MFA the agent can't drive) — `gocmd init` (CyVerse:
+  host `data.cyverse.org`, port 1247, zone `iplant`, user `ajmain1yasar9ahmed`) then, inside a `tmux`
+  on Anvil, `gocmd put -r --retry 3 --progress /anvil/projects/x-bio260019/donor_genomes
+  /iplant/home/ajmain1yasar9ahmed/workspace/data/`. (Globus RCAC-Anvil↔CyVerse is the robust
+  alternative for large data.) Once landed, inspect it and design the phasing-accuracy validation
+  (genotype concordance vs our het calls; absolute switch-error rate if the author data is phased).
+
+### 2026-09-16 (later) — VALIDATION TASK 2: ground-truth genotypes acquired + verified ✅
+
+The author WGS genotyping data was transferred from **Anvil** (`/anvil/projects/x-bio260019/donor_genomes`,
+originally `wget` from `neomorph.salk.edu/ftp/bican/WGS`) to CyVerse **`workspace/data/donor_genomes`**.
+Verified in tmux `genome-verify` (`/tmp/verify_genomes.sh`): **complete and intact.**
+
+Per donor (H1930001 / H1930002 / H1930004), 5 files each, all present + integrity-checked:
+- `<D>.final.vcf.gz` (~180 MB) + `.tbi` — WGS genotype calls (GATK `GT:AD:DP:GQ:PL`, single sample
+  `HBAgenomics`), **BGZF-OK**, tabix valid (673–692 contigs). **Genotypes are UNPHASED (all `/`, 0 `|`).**
+  Composition (first 20k records): ~57% het `0/1`, ~40% hom-alt `1/1`, ~2% `1/2`.
+- `<D>.hg38.fa` (3,262,833,025 B) + `.fai` — the **per-donor SNP-substituted reference** the authors
+  aligned to (the `hba-donor/hXXXXXXX` refs noted in S6 but previously inaccessible on TACC — now in hand).
+- `<D>.homosnp.chrfixed.vcf.gz` (~44–64 MB) — homozygous-SNP subset, BGZF-OK.
+Plus a supplementary `public/` folder (duplicate refs/VCFs incl. a wget `.1` dup — ignore).
+
+**FUSE lesson (again):** an initial `ls` omitted `H1930004.hg38.fa` and I wrongly flagged it missing; a
+`stat`/read of the full path found it present + size-complete. readdir drops byte-correct files on this
+mount — **confirm with `stat`; never conclude "missing" from `ls`/`find` alone.**
+
+**How it validates our phasing (to design 2026-09-17):**
+1. **Genotype concordance (direct):** compare our bsgenova/naive het calls vs the WGS genotypes at
+   overlapping sites → caller true/false-positive rates; answers the standing "what fraction of our
+   ~2 M het calls are real" caveat.
+2. **Phasing / switch-error (needs a choice — truth is UNPHASED):** either restrict our phased sites to
+   those confirmed het in WGS (removes artifacts, tightens the internal switch bounds), and/or
+   statistically phase the WGS genotypes (SHAPEIT + panel) into an approximate haplotype truth (carries
+   its own phasing error). Decide tomorrow.
+
+Meanwhile the snMC/snM3C phasing experiment keeps running autonomously (CB63 downloading; then phasing
+→ snM3C arm). Work paused for the day here.

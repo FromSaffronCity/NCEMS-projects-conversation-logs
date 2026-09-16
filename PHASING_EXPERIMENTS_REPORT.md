@@ -212,3 +212,19 @@ and `.blocks` file already carries per-site DP.
 | Coverage / homozygosity outputs and scripts | `workspace/coverage-homozygosity-computation/` |
 | Analysis and pipeline scripts | `workspace/Python-scripts/`, `workspace/shell-scripts/` |
 | Full session-by-session narrative | `snMC-seq_SNP_phasing_experiment.md`, `snM3C-seq_SNP_phasing_experiment.md` |
+
+## 11. Validation phase (planned — 2026-09-14, not yet started)
+
+The CX45 results above are to be validated two ways (full plans in the two session logs' 2026-09-14
+entries).
+
+1. **Cross-region replication.** Rerun the full pipeline on **two additional brain regions** (beyond
+   CX45) to test whether the trends here reproduce region-to-region: per region, snMC-seq pseudo-bulk
+   at **10 and 200 nuclei** (standard mode), and snM3C-seq pseudo-bulk at **10 nuclei** plus a large
+   tier whose **read depth is matched to the 200-nuclei snMC-seq** run (rather than the fixed 100
+   nuclei used at CX45) — i.e. a deliberately **depth-matched** snMC-vs-snM3C comparison, which the
+   CX45 work lacked (§7). Both callers throughout; specific regions TBD.
+2. **External genotype truth set.** The Science-paper authors provided genotyping data for these
+   donors (details TBD). It will be characterised, then used to validate the phasing — potentially
+   yielding genotype-concordance for the callers and, if the authors' data is phased, the first
+   **absolute switch-error rate** for our haplotypes, which §6 and §9 note has never been available.
