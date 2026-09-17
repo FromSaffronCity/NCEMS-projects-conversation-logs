@@ -228,3 +228,71 @@ entries).
    donors (details TBD). It will be characterised, then used to validate the phasing — potentially
    yielding genotype-concordance for the callers and, if the authors' data is phased, the first
    **absolute switch-error rate** for our haplotypes, which §6 and §9 note has never been available.
+
+## 12. Validation against WGS ground-truth genotypes (2026-09-17)
+
+Author whole-genome-sequencing genotypes (Salk/BICAN, `neomorph.salk.edu/ftp/bican/WGS`, one
+single-sample `HBAgenomics` VCF per donor, GATK `GT:AD:DP:GQ:PL`, **unphased**) give the first
+external truth for this project. Each donor's WGS holds **~1.94 M true heterozygous SNPs**
+(H1930001 1,942,674 · H1930002 1,946,484 · H1930004 1,922,030; ~3.37 M total SNPs).
+
+**Method.** Our preprocessed het SNP calls vs the WGS via `bcftools norm -m -any` + `isec` on
+`(chrom,pos,ref,alt)`. **precision** = our-het-also-het-in-WGS / our-total-het (treats WGS-absent
+sites as hom-ref, i.e. a *lower bound* — a minority of "absent" could be WGS no-calls). **recall** =
+our-confirmed-het / WGS-het. "Concord% (shared)" = of our het calls that coincide with a WGS *variant*
+site, the fraction WGS also calls het.
+
+### 12a. Genotype concordance — our het calls vs WGS truth
+
+| assay/tier | donor | caller | our het | shared w/ WGS variants | confirmed het (TP) | **precision** | **recall** | concord%(shared) |
+|---|---|---|---|---|---|---|---|---|
+| snMC 1000-cell | H1930001 | bsgenova | 2,314,396 | 1,749,111 | 1,727,147 | **74.6%** | **88.9%** | 98.7% |
+| snMC 1000-cell | H1930001 | naive | 2,012,384 | 1,735,969 | 1,725,607 | **85.7%** | **88.8%** | 99.4% |
+| snMC 200-cell | H1930002 | bsgenova | 847,372 | 791,708 | 505,553 | 59.7% | 26.0% | 63.9% |
+| snMC 200-cell | H1930002 | naive | 200,326 | 171,248 | 161,941 | 80.8% | 8.3% | 94.6% |
+| snMC 200-cell | H1930004 | bsgenova | 1,432,952 | 1,317,033 | 1,010,267 | 70.5% | 52.6% | 76.7% |
+| snMC 200-cell | H1930004 | naive | 708,448 | 629,164 | 589,677 | 83.2% | 30.7% | 93.7% |
+| snM3C 100-cell | H1930001 | bsgenova | 3,897,860 | 1,369,689 | 1,166,617 | 29.9% | 60.1% | 85.2% |
+| snM3C 100-cell | H1930001 | naive | 4,389,230 | 944,928 | 911,787 | 20.8% | 46.9% | 96.5% |
+| snM3C 100-cell | H1930002 | bsgenova | 4,203,619 | 1,369,558 | 1,181,735 | 28.1% | 60.7% | 86.3% |
+| snM3C 100-cell | H1930002 | naive | 4,885,323 | 946,417 | 925,283 | 18.9% | 47.5% | 97.8% |
+| snM3C 100-cell | H1930004 | bsgenova | 4,013,332 | 1,288,213 | 1,084,016 | 27.0% | 56.4% | 84.1% |
+| snM3C 100-cell | H1930004 | naive | 4,093,725 | 847,643 | 818,100 | 20.0% | 42.6% | 96.5% |
+
+### 12b. Findings
+
+1. **Depth dominates genotype accuracy.** The deep **snMC 1000-cell** pseudo-bulk (~58×) recovers
+   **~89 % of the donor's true het SNPs at 75–86 % precision** — the pipeline is *positively
+   validated at depth*. Shallow pseudo-bulks are far worse: snMC 200-cell (~11–17×) reaches only
+   8–53 % recall, and snM3C 100-cell (~3×) sits at 20–30 % precision. Both callers **over-call at low
+   depth** — snM3C reports 3.9–4.9 M hets against ~1.94 M real, so most shallow-callset hets are
+   false positives.
+
+2. **Precision/recall is a caller trade-off whose winner is depth/regime-dependent** — the accuracy
+   analogue of the phasing-yield rule (§8.3). **naive is consistently the more precise caller in
+   snMC** (81–86 % vs 60–75 %) and bsgenova the more sensitive (always higher recall). But in the
+   shallow **snM3C** regime this inverts: bsgenova is *both* more precise (27–30 % vs 19–21 %) and
+   more sensitive. Best single callset: **snMC 1000-cell naive — 85.7 % precision, 88.8 % recall.**
+
+3. **What the false positives are — and it is NOT what was first assumed.** The WGS-absent ("private")
+   hets are mostly false, but their substitution spectrum splits by depth. At high depth
+   (snMC 1000-cell) bsgenova's private hets are **70.7 % C>T/G>A** — classic **bisulfite C→T
+   conversion artifacts**; naive's conversion-masking (the hickit rule) strips these to **24.8 %**,
+   which is exactly why naive out-precises bsgenova here. At low depth (snM3C 100-cell) private hets
+   are *depleted* in C>T/G>A (7–17 %) — the FPs there are **non-conversion mapping/low-depth errors**,
+   which masking cannot catch. So bisulfite conversion FP is a *high-depth* problem the masking solves;
+   shallow FP is a different, unsolved problem.
+
+4. **Consequence for phasing.** At 100-cell snM3C, naive *phases the most* SNPs (§8.3) but has the
+   *lowest* genotype precision (~20 %) — a large share of its phased hets are false. The deep snMC
+   1000-cell callset is genotype-accurate (~85 %) but phases only into kb-scale blocks (no Hi-C).
+   Neither current operating point is both accurate and long-range; the ideal is deep **snM3C**
+   (accurate calls + Hi-C linkage), not yet run.
+
+### 12c. Caveats
+
+- WGS is variant-only, so precision treats every WGS-absent site as hom-ref: it is a **lower bound**;
+  a definitive FP-vs-no-call split needs the WGS BAM/gVCF (not held).
+- Cross-donor snMC rows are at unequal depth (d1 1000-cell vs d2/d4 200-cell) — compare within tier.
+- This validates **genotype calling**. The **switch-error** validation of the *haplotypes* (statistically
+  phasing the WGS into a truth and scoring our HapCUT2 blocks against it) is the next step, underway.
