@@ -2209,3 +2209,14 @@ complete + intact** for all 3 donors. Per donor: `<D>.final.vcf.gz`+`.tbi` = sin
 reference; `<D>.homosnp.chrfixed.vcf.gz`. Validation design — genotype concordance (direct) and a
 phasing/switch-error route that needs a phased-truth decision (WGS is unphased) — to be worked out
 2026-09-17. Full detail + the FUSE readdir lesson in the snMC log's "2026-09-16 (later)" entry.
+
+### 2026-09-21 — status pointer (snMC regional phasing + WGS validation)
+
+snMC regional phasing: **CX47 complete** (3 donors × 10/200 tiers × 2 callers); CX46 + CB63 were stuck
+~5 % short of the 196-cell threshold and were unstuck 2026-09-21 by relaxing tolerance
+(`READY_MIN=188 TOL200=14`) — now completing. WGS ground-truth **genotype-calling validation is done**
+(report §12, pushed `fa45c29`): depth dominates accuracy (snMC 1000-cell ≈85 % precision/89 % recall;
+shallow tiers over-call ~2–2.5×), naive more precise at depth (C>T-masking), bsgenova more sensitive.
+**Still to start:** this **snM3C regional arm** (10 + base-depth-matched tiers, repair + `--hic 1`) and
+the **switch-error** validation (SHAPEIT5-phase WGS → score haplotypes). Full detail in the snMC log's
+2026-09-21 entry and report §12.

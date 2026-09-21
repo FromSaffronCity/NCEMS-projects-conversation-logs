@@ -2765,3 +2765,34 @@ mount — **confirm with `stat`; never conclude "missing" from `ls`/`find` alone
 
 Meanwhile the snMC/snM3C phasing experiment keeps running autonomously (CB63 downloading; then phasing
 → snM3C arm). Work paused for the day here.
+
+### 2026-09-21 — regional snMC phasing status + WGS validation recap
+
+**snMC regional phasing (validation Task 1):**
+- **CX47 COMPLETE** — all 3 donors × {10,200}-cell tiers × {bsgenova,naive} phased (12 phased VCFs).
+- **CX46 and CB63 were stuck** at the `≥196` staging/download threshold. CX46/H1930001's 200-tier
+  stages only **190/200** (10 mount objects persistently unrecoverable — the flaky Pir/FI/SI CX46
+  cells, `STAGE_FAIL`), and **CB63/H1930004's download ended at 193/200** (7 cells failed at NeMO/mount).
+  Both ~5 % short, so the supervisor idle-looped for days without finishing them.
+- **Fix (2026-09-21):** relaxed the 200-tier merge tolerance (new env `TOL200`, set to 14) and the
+  supervisor `READY_MIN` to 188 — a ~190-cell pseudo-bulk is negligibly different and the snM3C
+  depth-match uses actual reads anyway. Killed the idle supervisor, relaunched via `setsid nohup`
+  (`READY_MIN=188 TOL200=14 POLL=1500`); CX46 d1/d2 200-tiers + CB63 both tiers are now completing.
+  Orchestrator change persisted to `shell-scripts/run_validation_snMC.sh`. Monitor `/tmp/val_snmc_phase.log`.
+- **CB63 gotcha (fixed earlier):** its snMC tars are named `<cell>.final.v2.bam.tar` (not
+  `.final.bam.tar`); the dedicated `dl_cb63.sh` uses manifest col1 verbatim.
+
+**WGS ground-truth validation (Task 2) — genotype calling DONE, in report §12, pushed (`fa45c29`):**
+Author WGS (Salk/BICAN, `workspace/data/donor_genomes`), ~1.94 M true het/donor. Concordance of our
+het calls vs truth — headline findings:
+- **Depth dominates accuracy:** snMC 1000-cell ≈ **85 % precision / 89 % recall**; shallow tiers
+  (snMC 200c, snM3C 100c) far worse and **over-call hets 2–2.5×** the true ~1.94 M.
+- Precision/recall is a **depth-dependent caller trade-off**: naive more precise in deep snMC
+  (its C>T conversion-masking strips the high-depth FPs — bsgenova private FP 70.7 % C>T/G>A → naive
+  24.8 %); bsgenova more sensitive always, and more precise in shallow snM3C.
+- **Low-depth FPs are non-conversion** (mapping/low-depth error), not C>T — masking can't catch them.
+
+**Outstanding (next):** (1) **snM3C regional arm** (10 + base-depth-matched-to-200-snMC tiers,
+`repair_m3c_pairs.py` + `--hic 1`) — not yet started; (2) **switch-error validation** — SHAPEIT5-phase
+the WGS into a truth and score our HapCUT2 blocks; prereqs verified (shapeit5 env OK, 1000G panel
+streams when run from `/tmp`), still needs b38-map re-fetch + a per-chromosome panel download.
