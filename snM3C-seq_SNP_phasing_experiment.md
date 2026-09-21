@@ -2220,3 +2220,12 @@ shallow tiers over-call ~2–2.5×), naive more precise at depth (C>T-masking), 
 **Still to start:** this **snM3C regional arm** (10 + base-depth-matched tiers, repair + `--hic 1`) and
 the **switch-error** validation (SHAPEIT5-phase WGS → score haplotypes). Full detail in the snMC log's
 2026-09-21 entry and report §12.
+
+### 2026-09-21 (cont.) — switch-error + FP refinement + CX47 (report §13)
+
+First absolute switch-error vs a SHAPEIT5-phased WGS truth (d1, chr20): **snMC 1000-cell ≈10.9 %,
+snM3C 100-cell 23–26 %** — the Mb-scale Hi-C phasing is ~2× noisier than deep short-range, and the
+snM3C values validate the internal ~18–28 % bounds. FP mechanism refined: high-depth FPs are C>T
+conversion; low-depth snM3C FPs are a *structured* T>C/A>G-skewed artifact (median DP ≈ true, not
+random), likely bisulfite strand-masking asymmetry. CX47 snMC replicates the CX45 caller-ordering
+trend (bsgenova>naive at 200-cell). Full tables in report §13.

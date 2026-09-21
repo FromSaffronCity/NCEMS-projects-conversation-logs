@@ -296,3 +296,62 @@ site, the fraction WGS also calls het.
 - Cross-donor snMC rows are at unequal depth (d1 1000-cell vs d2/d4 200-cell) — compare within tier.
 - This validates **genotype calling**. The **switch-error** validation of the *haplotypes* (statistically
   phasing the WGS into a truth and scoring our HapCUT2 blocks against it) is the next step, underway.
+
+## 13. Follow-up validation (2026-09-21): switch-error, FP mechanism, CX47 replication
+
+### 13a. Switch-error vs a WGS truth — the first *absolute* haplotype-accuracy number
+
+We built a phased truth by statistically phasing each donor's WGS genotypes with **SHAPEIT5
+`phase_common`** against the 1000G high-coverage reference panel (streamed) + b38 genetic map, then
+scored our HapCUT2 haplotypes against it. Switch error = within-block adjacent het pairs (het in both,
+phased in ours) whose cis/trans orientation disagrees with the truth (orientation-invariant, so it is
+insensitive to each block's arbitrary global flip). First pass: **donor H1930001, chr20** (truth =
+43,465 phased het sites).
+
+| phasing (CX45, d1, chr20) | shared phased het | comparable pairs | switches | **switch error** |
+|---|---|---|---|---|
+| snMC 1000-cell bsgenova | 13,645 | 7,458 | 810 | **10.86 %** |
+| snMC 1000-cell naive | 13,601 | 7,516 | 816 | **10.86 %** |
+| snM3C 100-cell bsgenova (`--hic`) | 17,629 | 8,977 | 2,105 | **23.45 %** |
+| snM3C 100-cell naive (`--hic`) | 16,172 | 7,600 | 2,003 | **26.36 %** |
+
+**Findings.** (1) This is the **first switch error against an external truth** — previously only
+internal bounds existed (§6: ~18.5 % same-caller split-half, ~28 % cross-caller at ≥1 Mb). The snM3C
+numbers (23–26 %) land squarely inside those bounds, **externally validating them.** (2) **Deep
+short-range snMC (≈11 %) is ~2× more accurate than long-range snM3C Hi-C (23–26 %)** — the long-range
+contacts that give snM3C its Mb-scale blocks also carry substantially more switch noise, confirming
+the "Mb blocks are real but provisional" caveat (§9). (3) Even the best case (~11 %) is far above a
+production WGS phasing (<1–2 %), so these pseudo-bulk haplotypes remain research-grade.
+**Caveats:** chr20 / donor-1 only; the truth is itself *statistically* phased so it carries its own
+error (our numbers are a combined upper bound); extension to more chromosomes/donors pending.
+
+### 13b. What the false positives actually are — refined
+
+§12b(3) is sharpened by measuring the private-FP substitution spectrum **and depth**:
+- **High depth (snMC 1000-cell):** private FPs are **70.7 % C>T/G>A** → bisulfite **C→T conversion
+  artifacts**; naive's masking strips them to 24.8 % (why naive out-precises bsgenova at depth). Solid.
+- **Low depth (snM3C 100-cell):** the FPs are **neither** conversion **nor** shallow-depth noise —
+  their median DP is **20** (≈ the true hets' 23), and their spectrum is strongly skewed to
+  **T>C/A>G (41 %)** with C>T *depleted* (16 %), vs a balanced ~33 %/33 % in true hets. So they are a
+  **structured, systematic artifact**, not random error — most plausibly the **bisulfite
+  strand-masking asymmetry** (the caller masks Watson-T and Crick-A, which can distort the A/G–T/C
+  balance). Confirming the mechanism needs the per-strand Watson/Crick counts (`DPW`/`DPC`) — open.
+
+### 13c. CX47 regional replication (validation Task 1, snMC 200-cell)
+
+CX47 snMC phasing is complete for all 3 donors (10 & 200-cell, both callers). 200-cell phased SNPs:
+
+| donor | bsgenova | naive |
+|---|---|---|
+| H1930001 | 501,284 | 343,299 |
+| H1930002 | 284,533 | 94,919 |
+| H1930004 | 397,788 | 237,093 |
+
+**The CX45 trends replicate:** bsgenova > naive at 200-cell snMC in **every** donor (1.5–3.0×),
+phasing rate ~25–28 %, blocks short/read-length-scale (~2.4 SNPs/block, no long-range) — as expected
+for standard-mode snMC. CX47's absolute yields run higher than CX45's, but this is **depth**, not
+region biology: at the same 200-cell count the CX47 pool carries more reads (d2 321 M vs 225 M; d4
+465 M vs 357 M) and higher per-site depth (d4 median DP **22 vs 17**), because the largest-200 CX47
+cells are deeper-sequenced libraries. So absolute yields are depth-confounded across regions — the
+**robust replication is the caller-ordering trend**, not the raw counts. (CB63 and CX46 200-tiers
+were ~5 % short of the cell threshold and are completing after a tolerance relaxation, 2026-09-21.)

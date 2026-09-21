@@ -2796,3 +2796,20 @@ het calls vs truth — headline findings:
 `repair_m3c_pairs.py` + `--hic 1`) — not yet started; (2) **switch-error validation** — SHAPEIT5-phase
 the WGS into a truth and score our HapCUT2 blocks; prereqs verified (shapeit5 env OK, 1000G panel
 streams when run from `/tmp`), still needs b38-map re-fetch + a per-chromosome panel download.
+
+### 2026-09-21 (cont.) — switch-error (2b), FP mechanism refined, CX47 replication (report §13)
+
+- **(2b) switch-error — first ABSOLUTE number vs external truth.** SHAPEIT5 `phase_common`
+  (+ streamed 1000G panel + b38 map) phased the WGS into a truth; our haplotypes scored against it
+  (donor-1, chr20): **snMC 1000-cell ≈ 10.9 %; snM3C 100-cell 23–26 %** — long-range Hi-C ~2× noisier,
+  and the snM3C values validate the internal ~18–28 % bounds. Tools: `run_switch_error.sh` +
+  `Python-scripts/switch_error_vs_truth.py` (bug fixed: `bcftools query -r` fails on the un-bgzipped
+  `.blocks.phased.VCF` → filter chr by awk). Caveat: chr20/d1 only; truth is itself statistically phased.
+- **FP mechanism refined:** high-depth FPs = C>T conversion (private 70.7 % C>T/G>A); **low-depth
+  (snM3C 100c) FPs are NOT low-depth/random** — median DP 20 (≈ true 23), strongly **T>C/A>G-skewed
+  (41 %)**, C>T-depleted → a *structured* artifact, likely bisulfite strand-masking asymmetry
+  (needs DPW/DPC to confirm).
+- **CX47 replication:** bsgenova>naive at 200-cell in all 3 donors (CX45 trend holds); CX47's higher
+  yields are **depth, not region** (deeper cell libraries: d4 median DP 22 vs CX45 17; total reads
+  ~30–43 % more) → absolute yields depth-confounded, the caller-ordering trend is the robust takeaway.
+- Regional phasing: CX46 + CB63 200-tiers completing after the 2026-09-21 tolerance relaxation.
