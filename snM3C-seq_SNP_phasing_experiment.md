@@ -2229,3 +2229,12 @@ snM3C values validate the internal ~18–28 % bounds. FP mechanism refined: high
 conversion; low-depth snM3C FPs are a *structured* T>C/A>G-skewed artifact (median DP ≈ true, not
 random), likely bisulfite strand-masking asymmetry. CX47 snMC replicates the CX45 caller-ordering
 trend (bsgenova>naive at 200-cell). Full tables in report §13.
+
+### 2026-09-22/23 — regional snMC phasing complete; snM3C arm still pending (report §14)
+
+snMC regional phasing finished for all 3 regions (CX47/CX46/CB63); bsgenova>naive at 200-cell in all
+6 region×donor combos incl. non-cortex cerebellum CB63 — CX45 trend replicates. Extended switch-error
+(3 donors × chr20/21/22) re-running after a 1000G-panel download fix. **This snM3C regional arm is
+still not launched**: no snM3C cells have been downloaded for the new regions yet (only CX45), and the
+from-scratch downloads (heavy mount-writes) were deferred to avoid contention — it needs those
+downloads + the depth-matched repair/`--hic 1` pipeline to start. Detail in the snMC log + report §14.

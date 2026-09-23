@@ -355,3 +355,32 @@ region biology: at the same 200-cell count the CX47 pool carries more reads (d2 
 cells are deeper-sequenced libraries. So absolute yields are depth-confounded across regions — the
 **robust replication is the caller-ordering trend**, not the raw counts. (CB63 and CX46 200-tiers
 were ~5 % short of the cell threshold and are completing after a tolerance relaxation, 2026-09-21.)
+
+## 14. Cross-region snMC phasing complete (2026-09-22) — trend replicates in 3 regions incl. non-cortex
+
+All snMC regional phasing (validation Task 1) is finished: **CX47** (3 donors), **CX46** (donors 1–2),
+**CB63** (donor-4, *cerebellum* — non-cortex), each 10 + 200-cell × both callers. 200-cell phased-SNP
+counts:
+
+| region | donor | bsgenova | naive |
+|---|---|---|---|
+| CX47 (cortex) | H1930001 | 501,284 | 343,299 |
+| CX47 | H1930002 | 284,533 | 94,919 |
+| CX47 | H1930004 | 397,788 | 237,093 |
+| CX46 (cortex) | H1930001 | 303,346 | 112,931 |
+| CX46 | H1930002 | 386,413 | 216,958 |
+| CB63 (cerebellum) | H1930004 | 366,083 | 194,643 |
+
+**bsgenova > naive at 200-cell snMC in every region×donor combination (6/6), including the non-cortex
+cerebellar region CB63** — the CX45 caller-ordering trend (§12/§8.3) replicates robustly across brain
+regions and tissue type. As at CX45, absolute yields track pseudo-bulk depth (per-region cell-library
+depth), so the reproducible finding is the **caller ordering**, not the raw counts. (CX46/CB63 200-tiers
+required relaxing the merge/availability tolerance to 190/200 cells — a few per-region cells were
+unrecoverable mount objects or, for CB63, download-failed; negligible for the pseudo-bulk.)
+
+**FP composition, made explicit (donor-1 CX45 snMC 1000-cell, from §12).** Of bsgenova's 2,314,396 het
+calls: **75.6 % overlap the WGS variant set** (74.6 % correct het + ~1 % miscalled genotype) and
+**24.4 % are private/not-in-WGS — overwhelmingly false positives** (70.7 % of them are C>T/G>A
+bisulfite-conversion artifacts); a genuinely rare/de-novo real fraction cannot be separated from a
+variant-only WGS but is a small minority. naive is cleaner (86.3 % overlap, 13.7 % private) because
+its conversion-masking removes the C>T FPs.

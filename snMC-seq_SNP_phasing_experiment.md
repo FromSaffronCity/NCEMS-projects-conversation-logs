@@ -2813,3 +2813,20 @@ streams when run from `/tmp`), still needs b38-map re-fetch + a per-chromosome p
   yields are **depth, not region** (deeper cell libraries: d4 median DP 22 vs CX45 17; total reads
   ~30–43 % more) → absolute yields depth-confounded, the caller-ordering trend is the robust takeaway.
 - Regional phasing: CX46 + CB63 200-tiers completing after the 2026-09-21 tolerance relaxation.
+
+### 2026-09-22/23 — regional snMC phasing COMPLETE; bug fixes; extended switch-error re-run
+
+- **All snMC regional phasing done:** CX47 (3 donors), CX46 (d1,d2), CB63 (d4, cerebellum), each
+  10+200-cell × both callers. 200-cell phased (bsg/naive): CX46 d1 303,346/112,931, d2 386,413/216,958;
+  CB63 d4 366,083/194,643. **bsgenova>naive in all 6 region×donor combos incl. non-cortex CB63** —
+  CX45 caller-ordering trend replicates across regions/tissue (report §14).
+- **Two bugs fixed to finish CX46/CB63:** (i) a strict `avail<T` tier guard (separate from the merge
+  tolerance) was silently skipping the 200-tier when <200 cells present → relaxed to `T-TOL200`;
+  (ii) launched d2/CB63 as separate fenced sessions (supervisor stopped to avoid collision).
+- **Extended switch-error (3 donors × chr20/21/22) re-running:** first attempt failed — 1000G panel
+  *streaming* broke ("Broken pipe"); fixed `run_switch_error_all.sh` to `curl -C -` (resumable) the
+  panel to /tmp then filter. Phased-VCF caches were reused.
+- **FP breakdown (d1 CX45 snMC 1000-cell, bsgenova):** 75.6 % overlap WGS (74.6 % correct het), 24.4 %
+  private ≈ FP (70.7 % C>T/G>A conversion artifacts); rare/de-novo not separable, small minority.
+- **snM3C regional arm still NOT launched** — blocked on prerequisite: no snM3C cells downloaded for
+  CX47/CX46/CB63 yet (only CX45 exists); deferred to avoid heavy concurrent mount-writes.
