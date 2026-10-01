@@ -2846,3 +2846,8 @@ streams when run from `/tmp`), still needs b38-map re-fetch + a per-chromosome p
   (`libcrypto.so.10`→`.so.1.0.0`); binary runs (v0.44). LD_LIBRARY_PATH includes /opt/conda/envs/ssl10/lib.
 - **Phaser comparison started:** HapCUT2/SHAPEIT5/EAGLE2/SHAPEIT5→RefLinker/EAGLE2→RefLinker on our
   callsets AND WGS het sites (3 donors × chr20/21/22); switch-errors + cross-method comparison to follow.
+
+### [AUTO-CAPTURE 2026-10-01 20:37] Task B part 1 — HapCUT2 switch-error vs SHAPEIT5-WGS truth (3 donors × chr20/21/22)
+```
+```
+(raw snapshot; to be curated into report §15a/§16a tables.)
