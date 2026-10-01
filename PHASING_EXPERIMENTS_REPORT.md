@@ -384,3 +384,40 @@ calls: **75.6 % overlap the WGS variant set** (74.6 % correct het + ~1 % miscall
 bisulfite-conversion artifacts); a genuinely rare/de-novo real fraction cannot be separated from a
 variant-only WGS but is a small minority. naive is cleaner (86.3 % overlap, 13.7 % private) because
 its conversion-masking removes the C>T FPs.
+
+## 15. Switch-error across donors/chromosomes; phaser comparison in progress (2026-10-01)
+
+### 15a. Extended switch-error (3 donors × chr20/21/22) vs the SHAPEIT5-phased WGS truth
+
+The §13a chr20/d1 switch-error was extended to **all 3 donors × chr20, chr21, chr22** (36 runs). The
+picture from §13 holds and generalises:
+
+| phasing | mean switch-error | range |
+|---|---|---|
+| **snM3C-100 (`--hic`)** | **24.7 %** | 22.5–27.4 % (very consistent across all donors+chrs) |
+| **snMC-1000 (d1)** | **10.6 %** | 10.2–10.9 % |
+| **snMC-200 (d2/d4)** | ~10 % (bsgenova) | 9–13 %; naive 1.4–6.4 % but on only ~150–300 sites (depth-starved, not meaningful) |
+
+So the long-range Hi-C phasing (snM3C) is **~2.3× noisier** than deep short-range snMC, **robustly across
+3 donors, 3 chromosomes, and tissue type** — not a chr20/d1 artefact. bsgenova is marginally better than
+naive on snM3C long-range (23–24 % vs 25–27 %).
+
+### 15b. Statistical phasing (SHAPEIT5) of our callsets — with a circularity caveat
+
+Phasing our own callsets with SHAPEIT5 (d1/chr20) gives apparently excellent switch-error vs the truth —
+snMC-1000 **0.5 %**, snM3C-100 **1.2–1.6 %** — but this is **largely circular**: the truth is *itself* a
+SHAPEIT5 phasing of the WGS (same statistical model + 1000G panel), so SHAPEIT5-vs-SHAPEIT5 agree by
+construction. It is a **self-consistency floor, not an independent accuracy measure.** The fair,
+independent comparison is HapCUT2 (read-backed, panel-free) vs the truth — the 10–25 % above. A
+non-circular phaser comparison (below) is the point of the RefLinker/EAGLE2 work.
+
+### 15c. Status of the broader comparison (in progress)
+
+- **snM3C regional phasing LAUNCHED** (2026-10-01): depth-matched to the 200-cell snMC bases, 6
+  combos (CX47 d1/d2/d4, CX46 d1/d2, CB63 d4), sequential/fenced; downloads were already complete.
+- **RefLinker fixed**: it built but failed at runtime on a missing `libcrypto.so.10`; resolved by
+  installing OpenSSL 1.0.2 and aliasing the soname (`libcrypto.so.10` → `.so.1.0.0`). It runs now (v0.44).
+- **Full phaser comparison in progress**: HapCUT2 · SHAPEIT5 · EAGLE2 · SHAPEIT5→RefLinker ·
+  EAGLE2→RefLinker, on **both** our bsgenova/naive callsets **and** the WGS ground-truth het sites,
+  for 3 donors × chr20/21/22, with switch-error computed for each and compared across methods. Numbers
+  to be added here on completion.

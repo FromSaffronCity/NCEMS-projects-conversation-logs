@@ -2830,3 +2830,19 @@ streams when run from `/tmp`), still needs b38-map re-fetch + a per-chromosome p
   private ≈ FP (70.7 % C>T/G>A conversion artifacts); rare/de-novo not separable, small minority.
 - **snM3C regional arm still NOT launched** — blocked on prerequisite: no snM3C cells downloaded for
   CX47/CX46/CB63 yet (only CX45 exists); deferred to avoid heavy concurrent mount-writes.
+
+### 2026-10-01 — extended switch-error, snM3C phasing launched, RefLinker fixed, phaser comparison started
+
+- **Extended switch-error (3 donors × chr20/21/22 vs SHAPEIT5-WGS truth), means:** snM3C-100 **24.7%**
+  (22.5–27.4%, very consistent), snMC-1000 **10.6%**, snMC-200 ~10% bsg (naive on tiny depth-starved
+  samples). Confirms long-range Hi-C phasing ~2.3× noisier than deep short-range, across donors/chrs/tissue.
+  (report §15a; full table in /tmp/switcherr2/results.tsv.)
+- **SHAPEIT5-on-our-callsets (d1/chr20):** 0.5% (snMC-1000) / 1.2–1.6% (snM3C-100) vs truth — but
+  **circular** (truth is itself SHAPEIT5-phased), a self-consistency floor not independent accuracy (§15b).
+- **snM3C regional phasing LAUNCHED** (`run_validation_snM3C.sh` + driver, tmux `val-snm3c-phase`):
+  depth-matched to 200-cell snMC bases (TARGET_BASES per combo), 6 combos sequential, fenced 0-63,
+  merged BAMs not published (reproducible). snM3C downloads were already complete.
+- **RefLinker fixed:** runtime `libcrypto.so.10` missing → installed openssl 1.0.2 env + aliased soname
+  (`libcrypto.so.10`→`.so.1.0.0`); binary runs (v0.44). LD_LIBRARY_PATH includes /opt/conda/envs/ssl10/lib.
+- **Phaser comparison started:** HapCUT2/SHAPEIT5/EAGLE2/SHAPEIT5→RefLinker/EAGLE2→RefLinker on our
+  callsets AND WGS het sites (3 donors × chr20/21/22); switch-errors + cross-method comparison to follow.

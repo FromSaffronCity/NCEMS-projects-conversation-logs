@@ -2238,3 +2238,12 @@ snMC regional phasing finished for all 3 regions (CX47/CX46/CB63); bsgenova>naiv
 still not launched**: no snM3C cells have been downloaded for the new regions yet (only CX45), and the
 from-scratch downloads (heavy mount-writes) were deferred to avoid contention — it needs those
 downloads + the depth-matched repair/`--hic 1` pipeline to start. Detail in the snMC log + report §14.
+
+### 2026-10-01 — snM3C regional phasing launched; switch-error + phaser comparison (report §15)
+
+snM3C downloads complete (6 combos); **regional snM3C phasing now running** (`run_validation_snM3C.sh`,
+depth-matched to 200-cell snMC bases, tmux `val-snm3c-phase`, sequential/fenced). Extended switch-error
+(3 donors × chr20/21/22) confirms snM3C `--hic` long-range phasing ~24.7% switch error (~2.3× noisier
+than deep snMC's ~10.6%), robust across donors/chrs. RefLinker fixed (libcrypto.so.10 via openssl-1.0 alias);
+the HapCUT2/SHAPEIT5/EAGLE2/±RefLinker comparison on our callsets + WGS het sites is in progress. Detail
+in the snMC log's 2026-10-01 entry + report §15.
