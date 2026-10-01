@@ -2247,3 +2247,85 @@ depth-matched to 200-cell snMC bases, tmux `val-snm3c-phase`, sequential/fenced)
 than deep snMC's ~10.6%), robust across donors/chrs. RefLinker fixed (libcrypto.so.10 via openssl-1.0 alias);
 the HapCUT2/SHAPEIT5/EAGLE2/±RefLinker comparison on our callsets + WGS het sites is in progress. Detail
 in the snMC log's 2026-10-01 entry + report §15.
+
+---
+
+### 2026-10-01 (eve) — phaser comparison results + block-span analysis (report §16)
+
+- **6 snM3C regional combos running in parallel** (CX47 d1/d2/d4, CX46 d1/d2, CB63 d4), each fenced to a
+  16-core block; depth-matched to the 200-cell snMC bases. In coordsort/repair/merge; phasing is the last
+  stage (no phased VCFs yet — expected).
+- **RefLinker fully working in-pipeline** after fixing 4 issues: (1) `output/` dir must pre-exist;
+  (2) graph file is `output/graph_variant_<name>_hic_<chr>.dat`; (3) `pop` takes only `-v -g -c -n`;
+  (4) solution is 0-based with phase in col5 (±1) — rewrote the parser (+1 pos, col5).
+- **5-phaser comparison** (HapCUT2, SHAPEIT5, EAGLE2, SHAPEIT5→RefLinker, EAGLE2→RefLinker) vs SHAPEIT5-WGS
+  truth, 3 donors × chr20/21/22, our callsets + WGS het sites. d1 complete; d2/d4 + WGS→RefLinker finishing
+  overnight (auto-chained).
+- **HapCUT2 (non-circular) switch-error vs truth**: snMC ≈10–11 % (bsg), snM3C ≈23–26 % (bsg 23–24, naive
+  25–26). HapCUT2 on WGS truth sites = 21.6 % — confirms ≈24 % is a Hi-C property, not a calling artefact.
+- **Block span (the key trade-off)**: snMC largest block ≈ **0.5–2 kb** (<0.01 % of chr); snM3C Hi-C ≈
+  **62–64 Mb = 96–99 % of chr20**, N50 ≈ 18–22 Mb — a **~30,000× longer reach**. So Hi-C's higher
+  switch-error buys chromosome-scale span snMC cannot reach; depth buys yield (3–5× more sites), not rate.
+
+---
+
+### 2026-10-01 (re-launch after NODE RESET) — reproducible recipe for BOTH remaining jobs
+
+**Why this section exists:** the compute node was reset between sessions — **all conda envs, all
+`/tmp` state (RefLinker build, EAGLE2, the `/tmp/switcherr2` WGS truth, `/tmp/snm3c_local` code),
+and the in-flight jobs from the 2026-10-01 eve session were wiped.** Only the `workspace/` mount
+survived (all data intact: WGS truth VCFs, snM3C-100 callsets + repaired Hi-C BAMs, the 6-combo
+validation BAMs under `data/phasing-validation-2026-09/`, genetic maps). This records the exact
+end-to-end re-run so it never has to be reconstructed again. **Deadline: Monday 06:00.**
+All jobs are CPU-FENCED with `taskset` (the hard guarantee against the resource exhaustion that
+wiped prior runs) and run in disconnect-safe `tmux` + `setsid nohup`.
+
+**STEP 0 — rebuild everything from the mount (ephemeral node):**
+```
+bash workspace/shell-scripts/bootstrap_envs.sh     # bsgenova,htslib-tools,hapcut2,shapeit5,samtools,build,ssl10
+#   ssl10 = OpenSSL 1.0.2 + libcrypto.so.10 alias (RefLinker runtime dep)
+# stage code to /tmp/snm3c_local/{shell-scripts,Python-scripts,bsgenova}  (run from /tmp, NEVER the mount)
+# stage reference hg38_chrL.fa -> /tmp/snm3c_phase/  (so 6 combos don't each re-read it from the mount)
+bash workspace/shell-scripts/build_phasers.sh      # EAGLE2 v2.4.1 (Broad GCS) + RefLinker (gbrunette/refLinker)
+#   RefLinker repo: https://github.com/gbrunette/refLinker  (binary `linker`; build.sh vendors htslib1.9+bamtools2.5.1)
+#   EAGLE2: https://storage.googleapis.com/broad-alkesgroup-public/Eagle/downloads/Eagle_v2.4.1.tar.gz
+#   RefLinker build may fail on the conda cross-linker ("ld: failed to set dynamic section sizes") —
+#   fall back to the v1.0 prebuilt release binary or system compilers.
+```
+
+**TASK A — 6 snM3C regional combos, PARALLEL, 10 cores EACH (`tmux val-snm3c-phase`):**
+```
+bash /tmp/snm3c_local/shell-scripts/run_validation_snM3C_parallel_10core.sh
+```
+- Combos = CX47 d1/d2/d4, CX46 d1/d2, CB63 d4; each fenced to a distinct 10-CPU block
+  (`taskset -c 0-9,10-19,…,50-59` = 60 of 128 cores), staggered 120 s, env knobs tuned to stay
+  ~≤10 cores inside the fence: `NP=2 PP=6 SHARD_CONC=5 SHARD_PW=2 PUBLISH_BIG_BAM=0`.
+- Per combo the worker `run_validation_snM3C.sh` does: coord-sort 3C cells → **depth-matched** merge
+  (TARGET_BASES = 200-cell snMC reads ×125) → `repair_m3c_pairs.py` → sharded bsgenova+naive
+  genotyping → HapCUT2 preprocessing → `extractHAIRS --hic 1`/`HAPCUT2 --hic 1`. Resumable via
+  `/tmp/m3c_val_<REGION>/.<donor>.<stage>_done`; merged BAMs are reproducible intermediates (not published).
+- Outputs → `data/phasing-validation-2026-09/<REGION>/{bisulfite-aware-SNPs,phased-from-HapCUT2}/`.
+
+**TASK B — switch-error + FULL 5-phaser comparison, ≤10 cores (`tmux phaser-cmp` → `phaser-full`):**
+```
+# part 1 — build SHAPEIT5-phased WGS truth + 1000G panels (chr20/21/22) and HapCUT2 switch-error:
+CHRS='chr20 chr21 chr22' TH=8 taskset -c 60-69 bash /tmp/snm3c_local/shell-scripts/run_switch_error_all.sh
+# part 2 — full matrix (auto-chained after part 1 + RefLinker):
+TH=6 taskset -c 60-69 bash /tmp/snm3c_local/shell-scripts/run_phaser_comparison_full.sh
+```
+- **Matrix:** 3 donors (H1930001/2/4) × chr20/21/22 × 3 **site-sets** (bsgenova het SNPs, naive het
+  SNPs, **WGS ground-truth het sites**) × 5 **phasers** (HapCUT2 read-backed · SHAPEIT5 · EAGLE2 ·
+  SHAPEIT5→RefLinker · EAGLE2→RefLinker), scored by **orientation-invariant switch-error vs the
+  SHAPEIT5-phased WGS truth** (`switch_error_vs_truth.py`). Site-sets realised as callsets
+  snMC{1000|200}_{bsg,naive}, snM3C100_{bsg,naive}, WGStruth.
+- RefLinker (Hi-C refine) applies only to Hi-C-linked site-sets (snM3C*, WGStruth); snMC rows = NA.
+  WGS-truth-sites HapCUT2 = `extractHAIRS/HAPCUT2 --hic 1` on the repaired snM3C-100 Hi-C BAM at the
+  truth het positions. HapCUT2 for our callsets reuses the pipeline's `blocks.phased.VCF`.
+- Fenced to cores 60-69 (≤10), sequential, `--thread ≤8`; truth/panels/maps cached in `/tmp/switcherr2`,
+  comparison results → `/tmp/phcmp_full/results.tsv`. Non-circular measure = HapCUT2 (read-backed,
+  panel-free); SHAPEIT5/EAGLE2/RefLinker share the truth's model+panel (self-consistency floor, §15b).
+- **Results append to report §16 + this log on completion, then committed+pushed to the logs repo.**
+
+**Current run status (launched 2026-10-01 ~19:50):** Task A — 6 combos launching/running (10 cores
+each). Task B part 1 running (truth+panels building); part 2 chained to follow. Numbers recorded here
+and in the report as each completes.

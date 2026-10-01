@@ -421,3 +421,102 @@ non-circular phaser comparison (below) is the point of the RefLinker/EAGLE2 work
   EAGLE2→RefLinker, on **both** our bsgenova/naive callsets **and** the WGS ground-truth het sites,
   for 3 donors × chr20/21/22, with switch-error computed for each and compared across methods. Numbers
   to be added here on completion.
+
+## 16. Phaser comparison + block-span analysis (2026-10-01)
+
+Five phasers compared against the **SHAPEIT5-phased WGS** ground truth, for 3 donors × chr20/21/22, on
+two site-sets: **(A)** our bsgenova/naive callsets and **(B)** the WGS ground-truth het sites. Switch-error
+is orientation-invariant, over within-block adjacent het pairs. The read-backed phaser (HapCUT2) is the
+**non-circular** measure; the statistical phasers (SHAPEIT5, EAGLE2) and RefLinker share the truth's model
+and 1000G panel, so their low numbers partly reflect self-consistency (see §15b).
+
+### 16a. HapCUT2 (read-backed) switch-error vs SHAPEIT5-WGS truth — bsgenova vs naive
+
+This is the headline, model-independent accuracy of our read-backed phasing. Per chromosome (switch-error %;
+comparable within-block pairs in parentheses):
+
+| donor | callset | caller | chr20 | chr21 | chr22 | mean |
+|---|---|---|---|---|---|---|
+| H1930001 | snMC-1000 | bsgenova | 10.86 | 10.72 | 10.50 | **10.7** |
+| H1930001 | snMC-1000 | naive    | 10.87 | 10.22 | 10.33 | **10.5** |
+| H1930001 | snM3C-100 | bsgenova | 23.58 | 22.62 | 22.61 | **22.9** |
+| H1930001 | snM3C-100 | naive    | 26.25 | 24.75 | 25.20 | **25.4** |
+| H1930002 | snMC-200  | bsgenova |  9.09 | 13.19 | 10.51 | **10.9** |
+| H1930002 | snMC-200  | naive    |  2.76 |  3.45 |  1.42 | 2.5 † |
+| H1930002 | snM3C-100 | bsgenova | 23.65 | 23.87 | 22.53 | **23.3** |
+| H1930002 | snM3C-100 | naive    | 26.68 | 25.13 | 25.95 | **25.9** |
+| H1930004 | snMC-200  | bsgenova | 10.81 | 11.21 | 11.14 | **11.1** |
+| H1930004 | snMC-200  | naive    |  6.25 |  4.62 |  6.43 | 5.8 † |
+| H1930004 | snM3C-100 | bsgenova | 24.60 | 24.06 | 23.69 | **24.1** |
+| H1930004 | snM3C-100 | naive    | 27.40 | 25.05 | 26.52 | **26.3** |
+
+† The snMC-200 **naive** rows are **depth-starved** — only ~150–860 comparable pairs (vs ~1,600–7,500 for
+bsgenova / snMC-1000). Their low switch-error is on a small, easy, high-confidence subset and is **not
+comparable** to the other rows.
+
+**Reading it:**
+- **snMC (short-range, deep) ≈ 10–11 %** switch-error (bsgenova; robust across all 3 donors, both tiers).
+- **snM3C (Hi-C, long-range) ≈ 23–26 %** — about **2.3× worse** than snMC, very consistent across donors/chrs.
+- bsgenova is **modestly better than naive on snM3C** (≈23–24 % vs ≈25–26 %); on snMC they tie (≈10.5–10.9 %).
+- Caveat: HapCUT2 scores within-block adjacent pairs, so its denominator is the (fragmented) block set,
+  not the whole chromosome — see §16c for how that denominator differs from the statistical phasers.
+
+### 16b. Block span / N50 — the long-range connectivity Hi-C buys
+
+Switch-error rate is only one axis. The other is **how far a single phased block reaches.** Computed from
+the HapCUT2 PS blocks (largest block span, its fraction of the chromosome, and the span-weighted N50):
+
+| callset | largest block span (chr20) | % of chr20 | N50 span (chr20) |
+|---|---|---|---|
+| snMC-1000 (d1) bsgenova | **1.9 kb** | <0.01 % | ~0 (all blocks ≤ a few kb) |
+| snMC-200 (d2) bsgenova  | **0.5 kb** | <0.01 % | ~0 |
+| snMC-200 (d4) bsgenova  | **0.8 kb** | <0.01 % | ~0 |
+| snM3C-100 (d1) bsgenova | **63.7 Mb** | **98.9 %** | **17.9 Mb** |
+| snM3C-100 (d2) bsgenova | **63.5 Mb** | **98.6 %** | **20.3 Mb** |
+| snM3C-100 (d4) bsgenova | **62.1 Mb** | **96.3 %** | **22.0 Mb** |
+
+(chr21/chr22 give the same picture: snM3C largest block = 38–41 Mb, **75–89 % of the chromosome**, N50 ≈
+9–23 Mb; snMC < 3 kb throughout.)
+
+**This is the decisive trade-off.** snMC read-backed blocks span **only ~0.5–2 kb** — essentially just the
+hets co-observed within a single read/fragment — so no amount of snMC depth produces long-range phasing.
+snM3C Hi-C blocks span **nearly the whole chromosome (~96–99 % of chr20)** — a **~30,000× increase in
+block span** over snMC-1000. Hi-C's higher switch-error rate (≈24 % vs ≈10 %) is the **price paid for that
+~30,000× longer reach**, which short-read snMC cannot achieve at any depth.
+
+### 16c. Does depth or Hi-C improve the switch-error *rate*? No — each helps a *different* axis.
+
+- **Depth (snMC-200 → snMC-1000): switch-error rate is flat (~10–11 %).** What depth improves is **yield** —
+  the number of hets confidently phased roughly 3–5× (e.g. chr20 comparable pairs ≈ 900–2,750 at 200 cells
+  vs ≈ 7,500 at 1,000 cells). Depth buys **completeness, not per-pair accuracy.** *(Caveat: 1,000-cell exists
+  only for d1 and 200-cell only for d2/d4, so this is a cross-donor, not within-donor, titration.)*
+- **Hi-C (snMC → snM3C): switch-error rate gets ~2.3× worse**, and RefLinker (explicitly using Hi-C to
+  refine a statistical seed) also nudges it worse (d1/chr20 snM3C-bsg: SHAPEIT5 1.58 % → SHAPEIT5→RefLinker
+  2.83 %). But Hi-C buys **chromosome-scale block span (§16b)** that snMC fundamentally cannot reach.
+
+**Conclusion for the manuscript — a trade-off, not a null result:** neither deeper snMC nor adding Hi-C
+lowers the switch-error *rate*; that rate is set by caller/allelic error and the intrinsic noise of long-range
+links, not by depth or contact range. What depth and Hi-C each improve is a *different* quantity — **sites
+phased** (depth) and **genomic span per block** (Hi-C), respectively.
+
+### 16d. Statistical phasers + RefLinker (5-phaser matrix)
+
+d1 is complete; d2/d4 statistical/RefLinker rows and the WGS-sites→RefLinker rows are computing overnight and
+auto-append to `/tmp/phcmp_full/results.tsv` (then here). The **d1/chr20** block (switch-error % vs truth):
+
+| site-set | callset | HapCUT2 | SHAPEIT5 | EAGLE2 | S5→RefLinker | E2→RefLinker |
+|---|---|---|---|---|---|---|
+| our | snMC-1000 bsgenova | 10.9 | 0.50 | 0.89 | — ‡ | — ‡ |
+| our | snMC-1000 naive    | 10.9 | 0.48 | 0.76 | — ‡ | — ‡ |
+| our | snM3C-100 bsgenova | 23.6 | 1.58 | 2.66 | 2.83 | 3.94 |
+| our | snM3C-100 naive    | 26.3 | 1.17 | 1.77 | 1.95 | 2.67 |
+| **WGS truth sites** | — | **21.6** | 0.00 * | 0.57 | *(overnight)* | *(overnight)* |
+
+‡ RefLinker refines phasing with Hi-C contacts, so it is only meaningful for the snM3C (Hi-C) callsets;
+snMC has no contact data. * SHAPEIT5 on the WGS het sites *is* the truth (0 % by construction).
+
+**Non-circular takeaways:** (1) **HapCUT2 on WGS truth sites = 21.6 %** — our Hi-C reads, phasing the
+*correct* het positions with no panel, reproduce the ≈24 % figure, confirming it is a property of the Hi-C
+data, not of our variant calling. (2) **SHAPEIT5/EAGLE2's ≤3 %** is largely the self-consistency floor of
+§15b (same model + panel as the truth). (3) **RefLinker does not help** here — its Hi-C links pull the
+statistical phasing *away* from the (statistically-defined) truth.
