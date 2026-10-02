@@ -2349,3 +2349,23 @@ and in the report as each completes.
   persisted to `workspace/shell-scripts/`. Collector commit trailer corrected and collector restarted.
 - Task A: all 6 combos still in the coord-sort stage.
 
+
+---
+
+### 2026-10-02 — Wrap-up: regional snM3C phasing abandoned; Task B re-run (report §17)
+
+The 2026-10-01 node reset wiped `/tmp` + all conda envs (mount survived). Decision: **give up on the
+additional regional snM3C-seq phasing** (Task A) and **finish Task B** (the 5-phaser switch-error
+comparison), then move on.
+
+- **Task A abandoned.** 6 depth-matched combos (CX47 d1/d2/d4, CX46 d1/d2, CB63 d4) had reached SNP
+  calling + HapCUT2 preprocessing (4/6 combos) but no final phased VCF; the merged BAMs were lost (only
+  `.bai` left), so finishing needs a full re-merge — not worth it.
+  - *Retained* on the mount: `Science-snM3C-seq/` per-cell inputs (~503 GB) and all intermediates
+    (`.snv.gz`/`.vcf.gz`, `.preprocessed.vcf.gz`) under `phasing-validation-2026-09/<region>/`.
+  - *Removed*: 6 orphan `*_snM3Cseq_dm_merged.bam.bai` + emptied `merged-BAM/` dirs (half-prepared only).
+- **Task B re-run prepared.** Rebuilt envs (`bootstrap_envs.sh`); re-extracted EAGLE2 + RefLinker from
+  `tools/prebuilt/`; restored panels/truth/maps from `data/wgs-truth-cache/` into `/tmp/switcherr2`;
+  regenerated the 9 `tgt.<donor>.<chr>.bcf` from `donor_genomes/`; re-verified all 5 phaser binaries.
+  Launching `run_phaser_comparison_full.sh` in a disconnect-safe tmux session, **≤20 cores**, with a
+  collector that checkpoints `/tmp` → mount, updates the logs/report as results land, and commits+pushes.

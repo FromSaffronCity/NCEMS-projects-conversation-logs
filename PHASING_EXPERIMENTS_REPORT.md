@@ -530,3 +530,41 @@ statistical phasing *away* from the (statistically-defined) truth.
 ```
 ```
 (raw snapshot; to be curated into report §16d.)
+
+## 17. Wrap-up (2026-10-02): regional snM3C-seq phasing abandoned; Task B re-run to completion
+
+A node reset on 2026-10-01 wiped the ephemeral compute node (`/tmp` + all conda envs); only the
+`workspace/` mount survived. Two experiments were in flight and did not finish. With the project moving
+in a new direction, we are **closing out the phasing work** rather than rebuilding the lost compute for
+the regional arm.
+
+### 17a. Task A — additional regional snM3C-seq phasing: ABANDONED
+The depth-matched snM3C-seq regional phasing (6 combos: CX47 d1/d2/d4, CX46 d1/d2, CB63 d4; §15c) is
+**discontinued.** At the reset it had reached SNP calling + HapCUT2 preprocessing for **4 of 6** combos
+(CX47/d2, CX46/d1, CX46/d2, CB63/d4) but **no combo produced a final `.blocks.phased.VCF`**, and the
+depth-matched merged BAMs were lost (only their `.bai` indexes survived). Finishing would require a full
+re-merge (re-download + merge + 3C pair-repair) per combo — not worth it, since the CX45 work (§13–§16)
+already settles the snMC-vs-snM3C question this arm was meant to validate.
+
+**Retained** on the mount, in `workspace/data/phasing-validation-2026-09/<region>/`:
+- Downloaded per-cell snM3C-seq inputs (`Science-snM3C-seq/`, ~503 GB total: CX47 257 GB/337 cells,
+  CX46 180 GB/200, CB63 66 GB/110).
+- All generated intermediates: bisulfite-aware SNP calls (`.snv.gz`/`.vcf.gz`, both callers) and
+  HapCUT2-preprocessed het VCFs (`.preprocessed.vcf.gz`) for the 4 preprocessed combos.
+
+**Removed** (the only half-prepared artifacts): 6 orphan `*_snM3Cseq_dm_merged.bam.bai` indexes whose
+BAMs were lost in the reset, plus the emptied `merged-BAM/` directories.
+
+The standard-mode **snMC-seq** regional phasing (validation Task 1) is unaffected and remains complete
+across CX47/CX46/CB63 (§14); only the snM3C-seq regional arm is dropped.
+
+### 17b. Task B — 5-phaser switch-error comparison: RE-RUN
+Task B (§16) is being finished. All inputs survived the reset: the CX45 input VCFs, the repaired Hi-C
+BAMs (3 donors), and — cached to the mount — the SHAPEIT5-phased WGS truth + 1000G panels + genetic maps
+(`workspace/data/wgs-truth-cache/`) and the EAGLE2 / RefLinker tool bundles (`workspace/tools/prebuilt/`).
+The environment was rebuilt via `bootstrap_envs.sh`; all five phaser binaries were re-verified; and the
+`tgt.<donor>.<chr>.bcf` WGS-truth targets were regenerated from `donor_genomes/`. The full matrix
+(3 donors × chr20/21/22 × {snMC & snM3C bsgenova/naive, WGS-truth sites} × {HapCUT2, SHAPEIT5, EAGLE2,
+SHAPEIT5→RefLinker, EAGLE2→RefLinker}) is re-running under a ≤20-core cap; **§16d** will be curated from
+the completed `results.tsv`. (The empty §16d auto-capture block above is the lost pre-reset snapshot,
+superseded by this re-run.)
