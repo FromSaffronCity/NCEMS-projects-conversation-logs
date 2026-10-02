@@ -568,3 +568,20 @@ The environment was rebuilt via `bootstrap_envs.sh`; all five phaser binaries we
 SHAPEIT5→RefLinker, EAGLE2→RefLinker}) is re-running under a ≤20-core cap; **§16d** will be curated from
 the completed `results.tsv`. (The empty §16d auto-capture block above is the lost pre-reset snapshot,
 superseded by this re-run.)
+
+<!-- TASKB-LIVE-START -->
+#### 16d (live, 2026-10-02 19:25 UTC). Full 5-phaser switch-error matrix — curated
+
+Switch-error % as **mean over the chromosomes completed so far** (n chrs in _n=_; mean comparable-pairs in _p=_). HapCUT2 is the non-circular read-backed measure; SHAPEIT5/EAGLE2/RefLinker share the truth's model+panel, so their low values are largely the self-consistency floor (§15b). RefLinker applies only to Hi-C site-sets; snMC callsets show NA. Cells not yet computed show --.
+
+
+**H1930001** (snMC tier 1000)
+
+| callset | HapCUT2 | SHAPEIT5 | EAGLE2 | SHAPEIT5->RefLinker | EAGLE2->RefLinker |
+|---|---|---|---|---|---|
+| snMC1000_bsg | 10.9 _(n=1, p=7458)_ | 0.5 _(n=1, p=39878)_ | 0.9 _(n=1, p=39878)_ | NA | NA |
+| snMC1000_naive | 10.9 _(n=1, p=7516)_ | 0.5 _(n=1, p=39957)_ | 0.7 _(n=1, p=39957)_ | NA | NA |
+| snM3C100_bsg | 23.4 _(n=1, p=8977)_ | 1.6 _(n=1, p=27970)_ | 2.7 _(n=1, p=27970)_ | -- | -- |
+
+_13 result rows computed so far._
+<!-- TASKB-LIVE-END -->

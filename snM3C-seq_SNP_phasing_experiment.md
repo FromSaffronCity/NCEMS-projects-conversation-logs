@@ -2369,3 +2369,23 @@ comparison), then move on.
   regenerated the 9 `tgt.<donor>.<chr>.bcf` from `donor_genomes/`; re-verified all 5 phaser binaries.
   Launching `run_phaser_comparison_full.sh` in a disconnect-safe tmux session, **≤20 cores**, with a
   collector that checkpoints `/tmp` → mount, updates the logs/report as results land, and commits+pushes.
+
+<!-- TASKB-RAW-START -->
+### Task B live raw results (2026-10-02 19:25 UTC) -- 13 rows
+```
+site_set  donor  chr  method  shared  pairs  switch%
+snMC1000_bsg    H1930001  chr20  HapCUT2              13645  7458   10.86
+snMC1000_bsg    H1930001  chr20  SHAPEIT5             39879  39878  0.53 
+snMC1000_bsg    H1930001  chr20  EAGLE2               39879  39878  0.89 
+snMC1000_bsg    H1930001  chr20  SHAPEIT5->RefLinker  NA     NA     NA   
+snMC1000_bsg    H1930001  chr20  EAGLE2->RefLinker    NA     NA     NA   
+snMC1000_naive  H1930001  chr20  HapCUT2              13601  7516   10.86
+snMC1000_naive  H1930001  chr20  SHAPEIT5             39958  39957  0.49 
+snMC1000_naive  H1930001  chr20  EAGLE2               39958  39957  0.74 
+snMC1000_naive  H1930001  chr20  SHAPEIT5->RefLinker  NA     NA     NA   
+snMC1000_naive  H1930001  chr20  EAGLE2->RefLinker    NA     NA     NA   
+snM3C100_bsg    H1930001  chr20  HapCUT2              17629  8977   23.45
+snM3C100_bsg    H1930001  chr20  SHAPEIT5             27971  27970  1.65 
+snM3C100_bsg    H1930001  chr20  EAGLE2               27971  27970  2.69 
+```
+<!-- TASKB-RAW-END -->
