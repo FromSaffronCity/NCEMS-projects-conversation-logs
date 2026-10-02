@@ -2371,7 +2371,7 @@ comparison), then move on.
   collector that checkpoints `/tmp` → mount, updates the logs/report as results land, and commits+pushes.
 
 <!-- TASKB-RAW-START -->
-### Task B live raw results (2026-10-02 20:43 UTC) -- 168 rows
+### Task B live raw results (2026-10-02 20:46 UTC) -- 171 rows
 ```
 site_set  donor  chr  method  shared  pairs  switch%
 snMC1000_bsg    H1930001  chr20  HapCUT2              13645  7458   10.86
@@ -2542,5 +2542,8 @@ snM3C100_bsg    H1930004  chr22  EAGLE2               15744  15743  2.90
 snM3C100_naive  H1930004  chr22  HapCUT2              9783   4929   26.52
 snM3C100_naive  H1930004  chr22  SHAPEIT5             13190  13189  1.02 
 snM3C100_naive  H1930004  chr22  EAGLE2               13190  13189  1.76 
+WGStruth        H1930004  chr22  HapCUT2              13743  9356   21.14
+WGStruth        H1930004  chr22  SHAPEIT5             25747  25746  0.43 
+WGStruth        H1930004  chr22  EAGLE2               25747  25746  0.61 
 ```
 <!-- TASKB-RAW-END -->
