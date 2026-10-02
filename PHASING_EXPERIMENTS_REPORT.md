@@ -438,21 +438,25 @@ comparable within-block pairs in parentheses):
 | donor | callset | caller | chr20 | chr21 | chr22 | mean |
 |---|---|---|---|---|---|---|
 | H1930001 | snMC-1000 | bsgenova | 10.86 | 10.72 | 10.50 | **10.7** |
-| H1930001 | snMC-1000 | naive    | 10.87 | 10.22 | 10.33 | **10.5** |
-| H1930001 | snM3C-100 | bsgenova | 23.58 | 22.62 | 22.61 | **22.9** |
-| H1930001 | snM3C-100 | naive    | 26.25 | 24.75 | 25.20 | **25.4** |
+| H1930001 | snMC-1000 | naive    | 10.86 | 10.22 | 10.33 | **10.5** |
+| H1930001 | snM3C-100 | bsgenova | 23.45 | 22.62 | 22.61 | **22.9** |
+| H1930001 | snM3C-100 | naive    | 26.36 | 24.75 | 25.20 | **25.4** |
 | H1930002 | snMC-200  | bsgenova |  9.09 | 13.19 | 10.51 | **10.9** |
 | H1930002 | snMC-200  | naive    |  2.76 |  3.45 |  1.42 | 2.5 † |
 | H1930002 | snM3C-100 | bsgenova | 23.65 | 23.87 | 22.53 | **23.3** |
 | H1930002 | snM3C-100 | naive    | 26.68 | 25.13 | 25.95 | **25.9** |
-| H1930004 | snMC-200  | bsgenova | 10.81 | 11.21 | 11.14 | **11.1** |
+| H1930004 | snMC-200  | bsgenova | 10.77 | 11.21 | 11.14 | **11.0** |
 | H1930004 | snMC-200  | naive    |  6.25 |  4.62 |  6.43 | 5.8 † |
-| H1930004 | snM3C-100 | bsgenova | 24.60 | 24.06 | 23.69 | **24.1** |
-| H1930004 | snM3C-100 | naive    | 27.40 | 25.05 | 26.52 | **26.3** |
+| H1930004 | snM3C-100 | bsgenova | 24.86 | 24.06 | 23.69 | **24.2** |
+| H1930004 | snM3C-100 | naive    | 27.13 | 25.05 | 26.52 | **26.2** |
 
 † The snMC-200 **naive** rows are **depth-starved** — only ~150–860 comparable pairs (vs ~1,600–7,500 for
 bsgenova / snMC-1000). Their low switch-error is on a small, easy, high-confidence subset and is **not
 comparable** to the other rows.
+
+*Values are the final re-run of 2026-10-01 20:35 UTC (after the node reset, truth rebuilt from scratch).
+chr21/chr22 reproduced to the second decimal; chr20 moved by ≤0.27 pp versus the pre-reset run (truth
+re-phased by SHAPEIT5), so per-chromosome figures carry ~±0.3 pp of truth-phasing noise; means moved ≤0.1.*
 
 **Reading it:**
 - **snMC (short-range, deep) ≈ 10–11 %** switch-error (bsgenova; robust across all 3 donors, both tiers).
@@ -520,3 +524,9 @@ snMC has no contact data. * SHAPEIT5 on the WGS het sites *is* the truth (0 % by
 data, not of our variant calling. (2) **SHAPEIT5/EAGLE2's ≤3 %** is largely the self-consistency floor of
 §15b (same model + panel as the truth). (3) **RefLinker does not help** here — its Hi-C links pull the
 statistical phasing *away* from the (statistically-defined) truth.
+
+### [AUTO-CAPTURE 2026-10-01 22:41] Task B part 2 — FULL 5-phaser switch-error matrix
+(donors × chr20/21/22 × {bsgenova,naive,WGStruth} × {HapCUT2,SHAPEIT5,EAGLE2,S5->RefLinker,E2->RefLinker})
+```
+```
+(raw snapshot; to be curated into report §16d.)

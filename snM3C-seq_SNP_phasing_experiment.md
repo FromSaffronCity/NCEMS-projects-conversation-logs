@@ -2329,3 +2329,23 @@ TH=6 taskset -c 60-69 bash /tmp/snm3c_local/shell-scripts/run_phaser_comparison_
 **Current run status (launched 2026-10-01 ~19:50):** Task A — 6 combos launching/running (10 cores
 each). Task B part 1 running (truth+panels building); part 2 chained to follow. Numbers recorded here
 and in the report as each completes.
+
+---
+
+### 2026-10-01 20:40 UTC — Task B part 1 DONE; part 2 relaunched after fixing two bugs
+
+- **Part 1 complete (20:35):** HapCUT2 switch-error vs the rebuilt SHAPEIT5-WGS truth, 3 donors × chr20/21/22.
+  Auto-captured (commit `7279189`); curated into report §16a. chr21/chr22 reproduce the pre-reset numbers
+  exactly; chr20 shifts ≤0.27 pp (truth re-phased) — means unchanged within ±0.1. snMC ≈ 10.5–11.0 %,
+  snM3C ≈ 22.9–26.2 % (bsgenova < naive by ~2.5 pp). WGS truth + panels cached to `data/wgs-truth-cache/`.
+- **Bug 1 (would have zeroed every HapCUT2 row in the 5-phaser matrix):** `run_phaser_comparison_full.sh`
+  extracted HapCUT2 phases with `bcftools query -r chr..` on the plain, unindexed `*.blocks.phased.VCF`;
+  `-r` needs an index → "not compressed with bgzip", hidden by `2>/dev/null` → empty → `shared=0`.
+  **Fix:** `-t` (streaming targets) on both the callset and WGS-truth-sites HapCUT2 paths.
+- **Bug 2:** `emit()` regexes accepted only digits, so the snMC RefLinker `NA` rows dumped the whole message
+  into the three numeric columns. **Fix:** accept `NA`.
+- Relaunched (tmux `phaser-full`, `taskset -c 60-69`, TH=6, nice 15); cached SHAPEIT5/EAGLE2 outputs reused.
+  Verified: d1/chr20 snMC1000_bsg HapCUT2 = 13,645 shared / 10.86 % — identical to part 1. Fixed script
+  persisted to `workspace/shell-scripts/`. Collector commit trailer corrected and collector restarted.
+- Task A: all 6 combos still in the coord-sort stage.
+
