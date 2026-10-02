@@ -570,7 +570,7 @@ the completed `results.tsv`. (The empty §16d auto-capture block above is the lo
 superseded by this re-run.)
 
 <!-- TASKB-LIVE-START -->
-#### 16d (live, 2026-10-02 19:57 UTC). Full 5-phaser switch-error matrix — curated
+#### 16d (live, 2026-10-02 20:12 UTC). Full 5-phaser switch-error matrix — curated
 
 Switch-error % as **mean over the chromosomes completed so far** (n chrs in _n=_; mean comparable-pairs in _p=_). HapCUT2 is the non-circular read-backed measure; SHAPEIT5/EAGLE2/RefLinker share the truth's model+panel, so their low values are largely the self-consistency floor (§15b). RefLinker applies only to Hi-C site-sets; snMC callsets show NA. Cells not yet computed show --.
 
@@ -589,10 +589,11 @@ Switch-error % as **mean over the chromosomes completed so far** (n chrs in _n=_
 
 | callset | HapCUT2 | SHAPEIT5 | EAGLE2 | SHAPEIT5->RefLinker | EAGLE2->RefLinker |
 |---|---|---|---|---|---|
-| snMC200_bsg | 9.1 _(n=1, p=924)_ | 5.5 _(n=1, p=13056)_ | 6.9 _(n=1, p=13056)_ | NA | NA |
-| snMC200_naive | 2.8 _(n=1, p=145)_ | 5.1 _(n=1, p=4409)_ | 4.8 _(n=1, p=4409)_ | NA | NA |
-| snM3C100_bsg | 23.6 _(n=1, p=9401)_ | 1.4 _(n=1, p=28936)_ | 2.5 _(n=1, p=28936)_ | -- | -- |
-| snM3C100_naive | 26.7 _(n=1, p=8051)_ | 0.9 _(n=1, p=23537)_ | 1.7 _(n=1, p=23537)_ | -- | -- |
+| snMC200_bsg | 10.9 _(p=715)_ | 5.5 _(p=9505)_ | 6.6 _(p=9505)_ | NA | NA |
+| snMC200_naive | 2.5 _(p=134)_ | 5.0 _(p=3335)_ | 4.6 _(p=3335)_ | NA | NA |
+| snM3C100_bsg | 23.3 _(p=7336)_ | 1.5 _(p=21599)_ | 2.5 _(p=21599)_ | -- | -- |
+| snM3C100_naive | 25.9 _(n=2, p=6489)_ | 0.9 _(n=2, p=18867)_ | 1.6 _(n=2, p=18867)_ | -- | -- |
+| WGStruth | 21.1 _(n=2, p=13413)_ | 0.4 _(n=2, p=37387)_ | 0.5 _(n=2, p=37387)_ | -- | -- |
 
-_73 result rows computed so far._
+_108 result rows computed so far._
 <!-- TASKB-LIVE-END -->
