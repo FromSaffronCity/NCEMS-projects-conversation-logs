@@ -2370,10 +2370,9 @@ comparison), then move on.
   Launching `run_phaser_comparison_full.sh` in a disconnect-safe tmux session, **≤20 cores**, with a
   collector that checkpoints `/tmp` → mount, updates the logs/report as results land, and commits+pushes.
 
-<!-- TASKB-RAW-START -->
-### Task B live raw results (2026-10-02 20:46 UTC) -- 171 rows
+### Task B FINAL raw results (2026-10-02, complete 5-phaser matrix) — 225 rows
 ```
-site_set  donor  chr  method  shared  pairs  switch%
+site_set        donor     chr    method               shared  pairs  sw%  
 snMC1000_bsg    H1930001  chr20  HapCUT2              13645  7458   10.86
 snMC1000_bsg    H1930001  chr20  SHAPEIT5             39879  39878  0.53 
 snMC1000_bsg    H1930001  chr20  EAGLE2               39879  39878  0.89 
@@ -2545,5 +2544,89 @@ snM3C100_naive  H1930004  chr22  EAGLE2               13190  13189  1.76
 WGStruth        H1930004  chr22  HapCUT2              13743  9356   21.14
 WGStruth        H1930004  chr22  SHAPEIT5             25747  25746  0.43 
 WGStruth        H1930004  chr22  EAGLE2               25747  25746  0.61 
+snM3C100_bsg    H1930001  chr21  SHAPEIT5->RefLinker  15709  15708  2.73 
+snM3C100_bsg    H1930001  chr22  SHAPEIT5->RefLinker  15679  15678  2.60 
+snM3C100_bsg    H1930001  chr21  EAGLE2->RefLinker    15709  15708  3.94 
+snM3C100_bsg    H1930001  chr22  EAGLE2->RefLinker    15679  15678  3.80 
+snM3C100_bsg    H1930001  chr20  SHAPEIT5->RefLinker  27665  27664  2.54 
+snM3C100_bsg    H1930002  chr20  SHAPEIT5->RefLinker  28607  28606  2.22 
+snM3C100_bsg    H1930001  chr20  EAGLE2->RefLinker    27665  27664  3.60 
+snM3C100_bsg    H1930002  chr21  SHAPEIT5->RefLinker  18004  18003  2.42 
+snM3C100_bsg    H1930002  chr20  EAGLE2->RefLinker    28607  28606  3.20 
+snM3C100_bsg    H1930002  chr22  SHAPEIT5->RefLinker  17431  17430  2.40 
+snM3C100_bsg    H1930002  chr21  EAGLE2->RefLinker    18004  18003  3.43 
+snM3C100_bsg    H1930002  chr22  EAGLE2->RefLinker    17431  17430  3.36 
+snM3C100_bsg    H1930004  chr21  SHAPEIT5->RefLinker  14674  14673  3.22 
+snM3C100_bsg    H1930004  chr21  EAGLE2->RefLinker    14674  14673  4.44 
+snM3C100_bsg    H1930004  chr22  SHAPEIT5->RefLinker  15531  15530  2.27 
+snM3C100_bsg    H1930004  chr22  EAGLE2->RefLinker    15531  15530  3.82 
+snM3C100_bsg    H1930004  chr20  SHAPEIT5->RefLinker  26112  26111  2.57 
+snM3C100_naive  H1930001  chr20  SHAPEIT5->RefLinker  22740  22739  1.85 
+snM3C100_naive  H1930001  chr21  SHAPEIT5->RefLinker  12591  12590  1.79 
+snM3C100_naive  H1930001  chr20  EAGLE2->RefLinker    22740  22739  2.46 
+snM3C100_naive  H1930001  chr21  EAGLE2->RefLinker    12591  12590  2.53 
+snM3C100_bsg    H1930004  chr20  EAGLE2->RefLinker    26112  26111  3.94 
+snM3C100_naive  H1930001  chr22  SHAPEIT5->RefLinker  13442  13441  2.08 
+snM3C100_naive  H1930001  chr22  EAGLE2->RefLinker    13442  13441  2.68 
+snM3C100_naive  H1930002  chr21  SHAPEIT5->RefLinker  14181  14180  1.51 
+snM3C100_naive  H1930002  chr21  EAGLE2->RefLinker    14181  14180  2.19 
+snM3C100_naive  H1930002  chr22  SHAPEIT5->RefLinker  15275  15274  1.89 
+snM3C100_naive  H1930002  chr22  EAGLE2->RefLinker    15275  15274  2.41 
+snM3C100_naive  H1930002  chr20  SHAPEIT5->RefLinker  23504  23503  1.52 
+snM3C100_naive  H1930004  chr21  SHAPEIT5->RefLinker  11300  11299  2.04 
+snM3C100_naive  H1930002  chr20  EAGLE2->RefLinker    23504  23503  2.23 
+snM3C100_naive  H1930004  chr21  EAGLE2->RefLinker    11300  11299  2.86 
+snM3C100_naive  H1930004  chr20  SHAPEIT5->RefLinker  20932  20931  1.90 
+snM3C100_naive  H1930004  chr20  EAGLE2->RefLinker    20932  20931  2.66 
+snM3C100_naive  H1930004  chr22  SHAPEIT5->RefLinker  13171  13170  1.67 
+snM3C100_naive  H1930004  chr22  EAGLE2->RefLinker    13171  13170  2.45 
+WGStruth        H1930001  chr21  SHAPEIT5->RefLinker  24427  24426  1.40 
+WGStruth        H1930001  chr22  SHAPEIT5->RefLinker  23035  23034  1.47 
+WGStruth        H1930001  chr21  EAGLE2->RefLinker    24427  24426  1.42 
+WGStruth        H1930001  chr22  EAGLE2->RefLinker    23035  23034  1.67 
+WGStruth        H1930001  chr20  SHAPEIT5->RefLinker  41307  41306  1.38 
+WGStruth        H1930001  chr20  EAGLE2->RefLinker    41307  41306  1.49 
+WGStruth        H1930002  chr21  SHAPEIT5->RefLinker  27871  27870  1.28 
+WGStruth        H1930002  chr21  EAGLE2->RefLinker    27871  27870  1.47 
+WGStruth        H1930002  chr20  SHAPEIT5->RefLinker  42645  42644  1.23 
+WGStruth        H1930002  chr22  SHAPEIT5->RefLinker  24780  24779  1.40 
+WGStruth        H1930002  chr20  EAGLE2->RefLinker    42645  42644  1.28 
+WGStruth        H1930002  chr22  EAGLE2->RefLinker    24780  24779  1.53 
+WGStruth        H1930004  chr20  SHAPEIT5->RefLinker  40891  40890  1.31 
+WGStruth        H1930004  chr21  SHAPEIT5->RefLinker  24393  24392  1.53 
+WGStruth        H1930004  chr20  EAGLE2->RefLinker    40891  40890  1.51 
+WGStruth        H1930004  chr22  SHAPEIT5->RefLinker  23708  23707  1.35 
+WGStruth        H1930004  chr21  EAGLE2->RefLinker    24393  24392  1.69 
+WGStruth        H1930004  chr22  EAGLE2->RefLinker    23708  23707  1.65 
 ```
-<!-- TASKB-RAW-END -->
+
+---
+
+### 2026-10-02 (later) — Task B COMPLETE: full 5-phaser matrix + RefLinker fixed
+
+The re-run finished: **225 result rows**, curated into report §16d. HapCUT2/SHAPEIT5/EAGLE2 for all
+45 (callset × donor × chr); SHAPEIT5→RefLinker and EAGLE2→RefLinker for the 27 Hi-C (callset × donor × chr)
+cells; snMC RefLinker = NA (no contacts).
+
+**RefLinker debugging (the hard part).** The prebuilt `linker` reported "no solution" for every Hi-C combo.
+Root causes, in order of discovery:
+1. **Stale binary** — the tool-bundle `linker` was built on the pre-reset node; at runtime its VCF reader
+   (bcf_sr, vendored htslib) silently returned 0 records, so `extract` built an empty graph. Relinking the
+   SAME objects against current libs (`c++ -no-pie -fopenmp src/*.o ... -lhts -lbamtools -lcurl -lz`) fixed it.
+   Instrumented `load_vcf_file` to prove it (chromosome=35 matched rid=35, but the prebuilt read 0 records).
+2. **`pop` spun forever** — default `window_size=0.5` truncates to int 0, so `greedy_cut` churns 500×N
+   iterations with `range 0` (the repeated `Flip_pos … range 0` output) and never phases. The README params
+   `-w 2000 -e -10.0 -p 0.999` make it converge in ~17 s.
+3. **Solution parser** — `pop_hap_solution` is tab-separated: col2 = pos (0-based), col3 = chr_pos_ref,
+   col5 = phase (−1/0/1). The script's `$1~/^chr/ && $4==0|1` parser matched nothing; correct parse adds 1
+   to col2 and reads col5.
+4. **WGS-truth seeds** carry the 3366-contig WGS reference, so chr20's rid ≠ the BAM-derived chromosome
+   index → 0 variants. Fixed by re-headering each WGS-truth seed VCF to the Hi-C BAM's 456-contig order.
+
+Validated d1/chr20 s5→RefLinker = 2.54 % (historical ad-hoc 2.83 %, within truth re-phasing noise). Fixed
+binary saved to `tools/prebuilt/linker.fixed`; full detail in `tools/prebuilt/REFLINKER_FIX_NOTE.md`; the
+backfill scripts are `shell-scripts/taskB_reflinker_backfill.sh` and `taskB_wgstruth_reflinker.sh`.
+
+**Headline (non-circular, HapCUT2):** snMC ≈ 10.5–11 %, snM3C ≈ 23–26 %, WGS-truth sites ≈ 20.6–21.5 %.
+**RefLinker does not improve switch-error** — it is flat-to-slightly-worse than its statistical seed across
+all donors/callsets, confirming §16c (Hi-C buys block span, not per-pair accuracy).

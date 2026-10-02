@@ -503,33 +503,64 @@ lowers the switch-error *rate*; that rate is set by caller/allelic error and the
 links, not by depth or contact range. What depth and Hi-C each improve is a *different* quantity — **sites
 phased** (depth) and **genomic span per block** (Hi-C), respectively.
 
-### 16d. Statistical phasers + RefLinker (5-phaser matrix)
+### 16d. Full 5-phaser switch-error matrix (3 donors × chr20/21/22) — COMPLETE
 
-d1 is complete; d2/d4 statistical/RefLinker rows and the WGS-sites→RefLinker rows are computing overnight and
-auto-append to `/tmp/phcmp_full/results.tsv` (then here). The **d1/chr20** block (switch-error % vs truth):
+Re-run to completion **2026-10-02** after the node reset; RefLinker was rebuilt (the prebuilt binary's
+stale htslib linkage silently read 0 variants — see the session log and
+`tools/prebuilt/REFLINKER_FIX_NOTE.md`). Switch-error % per phaser, **mean over chr20/21/22**. Three
+site-sets per donor: our two callsets (bsgenova/naive) and the **WGS-truth het positions**. **HapCUT2 is
+read-backed and model-independent** (the non-circular measure); SHAPEIT5/EAGLE2 and both RefLinker
+refinements share the truth's statistical model + 1000G panel, so their low values are largely the
+**self-consistency floor** (§15b), not independent accuracy. RefLinker applies only to the Hi-C site-sets
+(snM3C, WGS-truth); snMC has no contacts (NA).
 
-| site-set | callset | HapCUT2 | SHAPEIT5 | EAGLE2 | S5→RefLinker | E2→RefLinker |
-|---|---|---|---|---|---|---|
-| our | snMC-1000 bsgenova | 10.9 | 0.50 | 0.89 | — ‡ | — ‡ |
-| our | snMC-1000 naive    | 10.9 | 0.48 | 0.76 | — ‡ | — ‡ |
-| our | snM3C-100 bsgenova | 23.6 | 1.58 | 2.66 | 2.83 | 3.94 |
-| our | snM3C-100 naive    | 26.3 | 1.17 | 1.77 | 1.95 | 2.67 |
-| **WGS truth sites** | — | **21.6** | 0.00 * | 0.57 | *(overnight)* | *(overnight)* |
+**H1930001** (snMC tier 1000)
 
-‡ RefLinker refines phasing with Hi-C contacts, so it is only meaningful for the snM3C (Hi-C) callsets;
-snMC has no contact data. * SHAPEIT5 on the WGS het sites *is* the truth (0 % by construction).
+| callset | HapCUT2 | SHAPEIT5 | EAGLE2 | S5→RefLinker | E2→RefLinker |
+|---|---|---|---|---|---|
+| snMC-1000 bsgenova | 10.7 | 0.6 | 0.9 | NA | NA |
+| snMC-1000 naive    | 10.5 | 0.6 | 0.7 | NA | NA |
+| snM3C-100 bsgenova | 22.9 | 1.8 | 2.9 | 2.6 | 3.8 |
+| snM3C-100 naive    | 25.4 | 1.3 | 1.9 | 1.9 | 2.6 |
+| WGS-truth sites    | 20.8 | 0.5 | 0.6 | 1.4 | 1.5 |
 
-**Non-circular takeaways:** (1) **HapCUT2 on WGS truth sites = 21.6 %** — our Hi-C reads, phasing the
-*correct* het positions with no panel, reproduce the ≈24 % figure, confirming it is a property of the Hi-C
-data, not of our variant calling. (2) **SHAPEIT5/EAGLE2's ≤3 %** is largely the self-consistency floor of
-§15b (same model + panel as the truth). (3) **RefLinker does not help** here — its Hi-C links pull the
-statistical phasing *away* from the (statistically-defined) truth.
+**H1930002** (snMC tier 200)
 
-### [AUTO-CAPTURE 2026-10-01 22:41] Task B part 2 — FULL 5-phaser switch-error matrix
-(donors × chr20/21/22 × {bsgenova,naive,WGStruth} × {HapCUT2,SHAPEIT5,EAGLE2,S5->RefLinker,E2->RefLinker})
-```
-```
-(raw snapshot; to be curated into report §16d.)
+| callset | HapCUT2 | SHAPEIT5 | EAGLE2 | S5→RefLinker | E2→RefLinker |
+|---|---|---|---|---|---|
+| snMC-200 bsgenova  | 10.9 | 5.5 | 6.6 | NA | NA |
+| snMC-200 naive     | 2.5 † | 5.0 | 4.6 | NA | NA |
+| snM3C-100 bsgenova | 23.3 | 1.5 | 2.5 | 2.3 | 3.3 |
+| snM3C-100 naive    | 25.9 | 1.0 | 1.7 | 1.6 | 2.3 |
+| WGS-truth sites    | 20.6 | 0.4 | 0.5 | 1.3 | 1.4 |
+
+**H1930004** (snMC tier 200)
+
+| callset | HapCUT2 | SHAPEIT5 | EAGLE2 | S5→RefLinker | E2→RefLinker |
+|---|---|---|---|---|---|
+| snMC-200 bsgenova  | 11.0 | 2.5 | 3.6 | NA | NA |
+| snMC-200 naive     | 5.8 † | 1.5 | 1.9 | NA | NA |
+| snM3C-100 bsgenova | 24.2 | 1.9 | 3.2 | 2.7 | 4.1 |
+| snM3C-100 naive    | 26.2 | 1.1 | 1.9 | 1.9 | 2.7 |
+| WGS-truth sites    | 21.5 | 0.4 | 0.6 | 1.4 | 1.6 |
+
+† snMC-200 **naive** HapCUT2 is depth-starved (only 134 / 959 comparable within-block pairs for d2 / d4,
+vs thousands of pairs elsewhere) — a small, easy, high-confidence subset, **not comparable** to the other
+rows (§16a). The full per-(donor,chr) numbers are in the session log and
+`data/phaser-comparison-2026-10/results.tsv`.
+
+**What the complete matrix shows:**
+1. **HapCUT2 (non-circular):** snMC ≈ 10.5–11 %, snM3C ≈ 23–26 %, WGS-truth sites ≈ 20.6–21.5 % — the
+   ~2.3× Hi-C switch-error penalty (§16a) holds across all 3 donors, and **HapCUT2 on the correct
+   (WGS-truth) positions still gives ~21 %**, confirming the penalty is a property of the Hi-C linkage,
+   not of our variant calling.
+2. **Statistical phasers** (SHAPEIT5 < EAGLE2 throughout) sit at the ≤ ~1–6.6 % self-consistency floor
+   (§15b); the higher snMC-200 values for d2 reflect that donor's sparser panel overlap, not phasing skill.
+3. **RefLinker does not help.** Refining a SHAPEIT5/EAGLE2 seed with Hi-C contacts leaves switch-error
+   essentially unchanged or **slightly worse** (e.g. d1 snM3C bsgenova: SHAPEIT5 1.8 → S5→RefLinker 2.6;
+   EAGLE2 2.9 → E2→RefLinker 3.8), consistently across all 3 donors and both callsets, and on the
+   WGS-truth sites (~1.3–1.6 % vs SHAPEIT5 ~0.4–0.5 %). Its Hi-C links pull phasing *away* from the
+   statistically-defined truth — consistent with §16c: **Hi-C buys block span, not per-pair accuracy.**
 
 ## 17. Wrap-up (2026-10-02): regional snM3C-seq phasing abandoned; Task B re-run to completion
 
@@ -558,52 +589,22 @@ BAMs were lost in the reset, plus the emptied `merged-BAM/` directories.
 The standard-mode **snMC-seq** regional phasing (validation Task 1) is unaffected and remains complete
 across CX47/CX46/CB63 (§14); only the snM3C-seq regional arm is dropped.
 
-### 17b. Task B — 5-phaser switch-error comparison: RE-RUN
-Task B (§16) is being finished. All inputs survived the reset: the CX45 input VCFs, the repaired Hi-C
-BAMs (3 donors), and — cached to the mount — the SHAPEIT5-phased WGS truth + 1000G panels + genetic maps
-(`workspace/data/wgs-truth-cache/`) and the EAGLE2 / RefLinker tool bundles (`workspace/tools/prebuilt/`).
+### 17b. Task B — 5-phaser switch-error comparison: COMPLETE
+Task B (§16) is **finished** (2026-10-02). All inputs survived the reset: the CX45 input VCFs, the repaired
+Hi-C BAMs (3 donors), and — cached to the mount — the SHAPEIT5-phased WGS truth + 1000G panels + genetic
+maps (`workspace/data/wgs-truth-cache/`) and the EAGLE2 / RefLinker tool bundles (`workspace/tools/prebuilt/`).
 The environment was rebuilt via `bootstrap_envs.sh`; all five phaser binaries were re-verified; and the
 `tgt.<donor>.<chr>.bcf` WGS-truth targets were regenerated from `donor_genomes/`. The full matrix
 (3 donors × chr20/21/22 × {snMC & snM3C bsgenova/naive, WGS-truth sites} × {HapCUT2, SHAPEIT5, EAGLE2,
-SHAPEIT5→RefLinker, EAGLE2→RefLinker}) is re-running under a ≤20-core cap; **§16d** will be curated from
-the completed `results.tsv`. (The empty §16d auto-capture block above is the lost pre-reset snapshot,
-superseded by this re-run.)
+SHAPEIT5→RefLinker, EAGLE2→RefLinker}) ran under a ≤20-core cap — **225 result rows**, curated into the
+complete **§16d** above. Raw `results.tsv` is at `workspace/data/phaser-comparison-2026-10/`.
 
-<!-- TASKB-LIVE-START -->
-#### 16d (live, 2026-10-02 20:46 UTC). Full 5-phaser switch-error matrix — curated
-
-Switch-error % as **mean over the chromosomes completed so far** (n chrs in _n=_; mean comparable-pairs in _p=_). HapCUT2 is the non-circular read-backed measure; SHAPEIT5/EAGLE2/RefLinker share the truth's model+panel, so their low values are largely the self-consistency floor (§15b). RefLinker applies only to Hi-C site-sets; snMC callsets show NA. Cells not yet computed show --.
-
-
-**H1930001** (snMC tier 1000)
-
-| callset | HapCUT2 | SHAPEIT5 | EAGLE2 | SHAPEIT5->RefLinker | EAGLE2->RefLinker |
-|---|---|---|---|---|---|
-| snMC1000_bsg | 10.7 _(p=5453)_ | 0.6 _(p=28362)_ | 0.9 _(p=28362)_ | NA | NA |
-| snMC1000_naive | 10.5 _(p=5500)_ | 0.6 _(p=28417)_ | 0.7 _(p=28417)_ | NA | NA |
-| snM3C100_bsg | 22.9 _(p=6641)_ | 1.8 _(p=19900)_ | 2.9 _(p=19900)_ | -- | -- |
-| snM3C100_naive | 25.4 _(p=5686)_ | 1.3 _(p=16277)_ | 1.9 _(p=16277)_ | -- | -- |
-| WGStruth | 20.8 _(p=11371)_ | 0.5 _(p=31512)_ | 0.6 _(p=31512)_ | -- | -- |
-
-**H1930002** (snMC tier 200)
-
-| callset | HapCUT2 | SHAPEIT5 | EAGLE2 | SHAPEIT5->RefLinker | EAGLE2->RefLinker |
-|---|---|---|---|---|---|
-| snMC200_bsg | 10.9 _(p=715)_ | 5.5 _(p=9505)_ | 6.6 _(p=9505)_ | NA | NA |
-| snMC200_naive | 2.5 _(p=134)_ | 5.0 _(p=3335)_ | 4.6 _(p=3335)_ | NA | NA |
-| snM3C100_bsg | 23.3 _(p=7336)_ | 1.5 _(p=21599)_ | 2.5 _(p=21599)_ | -- | -- |
-| snM3C100_naive | 25.9 _(p=6382)_ | 1.0 _(p=17676)_ | 1.7 _(p=17676)_ | -- | -- |
-| WGStruth | 20.6 _(p=12288)_ | 0.4 _(p=33703)_ | 0.5 _(p=33703)_ | -- | -- |
-
-**H1930004** (snMC tier 200)
-
-| callset | HapCUT2 | SHAPEIT5 | EAGLE2 | SHAPEIT5->RefLinker | EAGLE2->RefLinker |
-|---|---|---|---|---|---|
-| snMC200_bsg | 11.0 _(p=1993)_ | 2.5 _(p=17609)_ | 3.6 _(p=17609)_ | NA | NA |
-| snMC200_naive | 5.8 _(p=959)_ | 1.5 _(p=11091)_ | 1.9 _(p=11091)_ | NA | NA |
-| snM3C100_bsg | 24.2 _(p=6282)_ | 1.9 _(p=19037)_ | 3.2 _(p=19037)_ | -- | -- |
-| snM3C100_naive | 26.2 _(p=5278)_ | 1.1 _(p=15160)_ | 1.9 _(p=15160)_ | -- | -- |
-| WGStruth | 21.5 _(p=11228)_ | 0.4 _(p=31907)_ | 0.6 _(p=31907)_ | -- | -- |
-
-_171 result rows computed so far._
-<!-- TASKB-LIVE-END -->
+**RefLinker fix (required for the two RefLinker columns).** The prebuilt `linker` in the tool bundle had a
+stale htslib linkage left over from the pre-reset node: at runtime its VCF reader silently returned 0
+records, so every Hi-C combo gave "no solution". Three issues were found and fixed (full detail in the
+session log and `workspace/tools/prebuilt/REFLINKER_FIX_NOTE.md`): (1) relink the binary against current
+libs; (2) `pop` needs `-w 2000 -e -10.0 -p 0.999` (its default `window_size` truncates to 0 and the solver
+spins forever); (3) the solution parser (phase in col5, 0-based positions). For the WGS-truth site-set the
+seed VCFs also had to be re-headered to the Hi-C BAM's contig order (their 3366-contig WGS reference put
+chr20 at a different index than the BAM). Validated on d1/chr20 (s5→RefLinker = 2.54 %, matching the
+historical 2.83 % within truth re-phasing noise). The fixed binary is saved as `tools/prebuilt/linker.fixed`.
