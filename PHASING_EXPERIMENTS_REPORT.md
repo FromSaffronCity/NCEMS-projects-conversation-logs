@@ -570,7 +570,7 @@ the completed `results.tsv`. (The empty §16d auto-capture block above is the lo
 superseded by this re-run.)
 
 <!-- TASKB-LIVE-START -->
-#### 16d (live, 2026-10-02 19:41 UTC). Full 5-phaser switch-error matrix — curated
+#### 16d (live, 2026-10-02 19:57 UTC). Full 5-phaser switch-error matrix — curated
 
 Switch-error % as **mean over the chromosomes completed so far** (n chrs in _n=_; mean comparable-pairs in _p=_). HapCUT2 is the non-circular read-backed measure; SHAPEIT5/EAGLE2/RefLinker share the truth's model+panel, so their low values are largely the self-consistency floor (§15b). RefLinker applies only to Hi-C site-sets; snMC callsets show NA. Cells not yet computed show --.
 
@@ -579,11 +579,20 @@ Switch-error % as **mean over the chromosomes completed so far** (n chrs in _n=_
 
 | callset | HapCUT2 | SHAPEIT5 | EAGLE2 | SHAPEIT5->RefLinker | EAGLE2->RefLinker |
 |---|---|---|---|---|---|
-| snMC1000_bsg | 10.8 _(n=2, p=6066)_ | 0.6 _(n=2, p=31630)_ | 0.8 _(n=2, p=31630)_ | NA | NA |
-| snMC1000_naive | 10.5 _(n=2, p=6106)_ | 0.5 _(n=2, p=31683)_ | 0.7 _(n=2, p=31683)_ | NA | NA |
-| snM3C100_bsg | 23.0 _(n=2, p=7235)_ | 1.8 _(n=2, p=21941)_ | 2.9 _(n=2, p=21941)_ | -- | -- |
-| snM3C100_naive | 25.6 _(n=2, p=6040)_ | 1.2 _(n=2, p=17685)_ | 1.8 _(n=2, p=17685)_ | -- | -- |
-| WGStruth | 21.2 _(n=2, p=12480)_ | 0.4 _(n=2, p=34810)_ | 0.5 _(n=2, p=34810)_ | -- | -- |
+| snMC1000_bsg | 10.7 _(p=5453)_ | 0.6 _(p=28362)_ | 0.9 _(p=28362)_ | NA | NA |
+| snMC1000_naive | 10.5 _(p=5500)_ | 0.6 _(p=28417)_ | 0.7 _(p=28417)_ | NA | NA |
+| snM3C100_bsg | 22.9 _(p=6641)_ | 1.8 _(p=19900)_ | 2.9 _(p=19900)_ | -- | -- |
+| snM3C100_naive | 25.4 _(p=5686)_ | 1.3 _(p=16277)_ | 1.9 _(p=16277)_ | -- | -- |
+| WGStruth | 20.8 _(p=11371)_ | 0.5 _(p=31512)_ | 0.6 _(p=31512)_ | -- | -- |
 
-_38 result rows computed so far._
+**H1930002** (snMC tier 200)
+
+| callset | HapCUT2 | SHAPEIT5 | EAGLE2 | SHAPEIT5->RefLinker | EAGLE2->RefLinker |
+|---|---|---|---|---|---|
+| snMC200_bsg | 9.1 _(n=1, p=924)_ | 5.5 _(n=1, p=13056)_ | 6.9 _(n=1, p=13056)_ | NA | NA |
+| snMC200_naive | 2.8 _(n=1, p=145)_ | 5.1 _(n=1, p=4409)_ | 4.8 _(n=1, p=4409)_ | NA | NA |
+| snM3C100_bsg | 23.6 _(n=1, p=9401)_ | 1.4 _(n=1, p=28936)_ | 2.5 _(n=1, p=28936)_ | -- | -- |
+| snM3C100_naive | 26.7 _(n=1, p=8051)_ | 0.9 _(n=1, p=23537)_ | 1.7 _(n=1, p=23537)_ | -- | -- |
+
+_73 result rows computed so far._
 <!-- TASKB-LIVE-END -->

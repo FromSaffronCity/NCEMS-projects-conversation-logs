@@ -2371,7 +2371,7 @@ comparison), then move on.
   collector that checkpoints `/tmp` → mount, updates the logs/report as results land, and commits+pushes.
 
 <!-- TASKB-RAW-START -->
-### Task B live raw results (2026-10-02 19:41 UTC) -- 38 rows
+### Task B live raw results (2026-10-02 19:57 UTC) -- 73 rows
 ```
 site_set  donor  chr  method  shared  pairs  switch%
 snMC1000_bsg    H1930001  chr20  HapCUT2              13645  7458   10.86
@@ -2412,5 +2412,40 @@ snM3C100_naive  H1930001  chr21  EAGLE2               12606  12605  1.90
 WGStruth        H1930001  chr21  HapCUT2              14279  9713   20.98
 WGStruth        H1930001  chr21  SHAPEIT5             26157  26156  0.36 
 WGStruth        H1930001  chr21  EAGLE2               26157  26156  0.40 
+snMC1000_bsg    H1930001  chr22  HapCUT2              7703   4228   10.50
+snMC1000_bsg    H1930001  chr22  SHAPEIT5             21828  21827  0.79 
+snMC1000_bsg    H1930001  chr22  EAGLE2               21828  21827  1.16 
+snMC1000_bsg    H1930001  chr22  SHAPEIT5->RefLinker  NA     NA     NA   
+snMC1000_bsg    H1930001  chr22  EAGLE2->RefLinker    NA     NA     NA   
+snMC1000_naive  H1930001  chr22  HapCUT2              7660   4288   10.33
+snMC1000_naive  H1930001  chr22  SHAPEIT5             21886  21885  0.65 
+snMC1000_naive  H1930001  chr22  EAGLE2               21886  21885  0.83 
+snMC1000_naive  H1930001  chr22  SHAPEIT5->RefLinker  NA     NA     NA   
+snMC1000_naive  H1930001  chr22  EAGLE2->RefLinker    NA     NA     NA   
+snM3C100_bsg    H1930001  chr22  HapCUT2              10262  5454   22.61
+snM3C100_bsg    H1930001  chr22  SHAPEIT5             15818  15817  1.81 
+snM3C100_bsg    H1930001  chr22  EAGLE2               15818  15817  2.95 
+snM3C100_naive  H1930001  chr22  HapCUT2              9941   4980   25.20
+snM3C100_naive  H1930001  chr22  SHAPEIT5             13463  13462  1.39 
+snM3C100_naive  H1930001  chr22  EAGLE2               13463  13462  2.01 
+WGStruth        H1930001  chr22  HapCUT2              13473  9155   20.16
+WGStruth        H1930001  chr22  SHAPEIT5             24918  24917  0.55 
+WGStruth        H1930001  chr22  EAGLE2               24918  24917  0.71 
+snMC200_bsg     H1930002  chr20  HapCUT2              2031   924    9.09 
+snMC200_bsg     H1930002  chr20  SHAPEIT5             13057  13056  5.51 
+snMC200_bsg     H1930002  chr20  EAGLE2               13057  13056  6.94 
+snMC200_bsg     H1930002  chr20  SHAPEIT5->RefLinker  NA     NA     NA   
+snMC200_bsg     H1930002  chr20  EAGLE2->RefLinker    NA     NA     NA   
+snMC200_naive   H1930002  chr20  HapCUT2              297    145    2.76 
+snMC200_naive   H1930002  chr20  SHAPEIT5             4410   4409   5.06 
+snMC200_naive   H1930002  chr20  EAGLE2               4410   4409   4.83 
+snMC200_naive   H1930002  chr20  SHAPEIT5->RefLinker  NA     NA     NA   
+snMC200_naive   H1930002  chr20  EAGLE2->RefLinker    NA     NA     NA   
+snM3C100_bsg    H1930002  chr20  HapCUT2              18637  9401   23.65
+snM3C100_bsg    H1930002  chr20  SHAPEIT5             28937  28936  1.43 
+snM3C100_bsg    H1930002  chr20  EAGLE2               28937  28936  2.48 
+snM3C100_naive  H1930002  chr20  HapCUT2              17356  8051   26.68
+snM3C100_naive  H1930002  chr20  SHAPEIT5             23538  23537  0.93 
+snM3C100_naive  H1930002  chr20  EAGLE2               23538  23537  1.72 
 ```
 <!-- TASKB-RAW-END -->
