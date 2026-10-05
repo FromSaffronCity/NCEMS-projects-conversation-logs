@@ -1,6 +1,6 @@
 # Phasing Heterozygous SNPs from Single-Cell Bisulfite Sequencing — Project Report
 
-**Period:** 2026-07-12 → 2026-09-02   **Donors:** H1930001, H1930002, H1930004 (human cortex, CX45)
+**Period:** 2026-07-12 → 2026-10-05   **Donors:** H1930001, H1930002, H1930004 (human cortex, CX45)
 **Data:** Tian W, Zhou J, … Ecker JR, *Science* 2023 (DOI 10.1126/science.adf5357), GEO GSE215353,
 per-cell BAMs from the NeMO Archive. No re-mapping — the authors' alignments are used as published.
 
@@ -608,3 +608,63 @@ spins forever); (3) the solution parser (phase in col5, 0-based positions). For 
 seed VCFs also had to be re-headered to the Hi-C BAM's contig order (their 3366-contig WGS reference put
 chr20 at a different index than the BAM). Validated on d1/chr20 (s5→RefLinker = 2.54 %, matching the
 historical 2.83 % within truth re-phasing noise). The fixed binary is saved as `tools/prebuilt/linker.fixed`.
+
+## 18. Interpretation and close-out (2026-10-05)
+
+Final housekeeping confirmed that no tmux jobs were left running, all experiment artifacts had been moved off `/tmp` onto
+the mount, and the logs on the mount matched GitHub. This section records the plain-language reading of
+the §16d switch-error matrix that was agreed in the closing discussion.
+
+### 18a. What the HapCUT2 switch-error numbers tell us (the one non-circular measure)
+
+HapCUT2 uses **only the sequencing reads** — no population model or reference panel — so it is the one
+honest test of how well single-cell methylation reads phase SNPs on their own.
+
+| site-set | HapCUT2 switch-error | block span | reading |
+|---|---|---|---|
+| snMC (bsgenova) | **~10–11 %** (≈1 in 10 adjacent pairs wrong) | ~0.5–2 kb | accurate, but only within a read |
+| snM3C (bsgenova / naive) | **~23–24 % / ~25–26 %** (≈1 in 4 wrong) | ~96–99 % of chr20 | noisy, but chromosome-scale |
+| WGS-truth het sites (Hi-C reads) | **~21 %** | chromosome-scale | correct sites, still ~21 % |
+
+- **Read-based phasing from single-cell methylation data works, with a trade-off:** snMC is ~2.3× more
+  accurate per pair; snM3C (Hi-C) trades accuracy for ~30,000× longer reach.
+- **The snM3C penalty is not caused by our variant calling.** With the correct (WGS-truth) positions,
+  HapCUT2 on the Hi-C reads still gives ~21 %, so the error lives in the noisy long-range Hi-C links.
+- **bsgenova beats naive by ~2 pp on snM3C** and ties on deep snMC. (The low naive snMC-200 values,
+  2.5 % / 5.8 %, rest on only a few hundred scorable pairs and are not comparable.)
+- **Depth does not lower the error rate** (200 → 1,000 cells: flat at ~10–11 %); it phases 3–5× more sites.
+- Caveat: the truth is itself SHAPEIT5-phased, so a small share of the measured "errors" may be truth errors.
+
+### 18b. Statistical phasers and RefLinker
+
+- **SHAPEIT5 < EAGLE2** everywhere, but both sit at a **self-consistency floor** (~0.4–6.6 %): they share the
+  truth's statistical model and 1000G panel, so they partly "grade their own homework." These numbers
+  are **model-consistent, not independent accuracy**, and should be labelled that way in any write-up.
+- **RefLinker is not a statistical phaser.** It refines a statistical seed using Hi-C/linked-read contacts.
+  Here it is **flat-to-slightly-worse** than its seed (e.g. d1 snM3C bsgenova: SHAPEIT5 1.8 → 2.6 %;
+  EAGLE2 2.9 → 3.8 %), across all donors, callsets and the WGS-truth sites. **Recommendation: drop it**
+  for this data type.
+
+### 18c. Implications
+
+1. **Choose the assay for the goal:** snMC for accurate local phasing, snM3C for chromosome-scale haplotypes.
+   Depth buys **sites phased**; Hi-C buys **span per block**; neither lowers the per-pair error rate.
+2. **Use bsgenova** for bisulfite data. Its advantage is largest with Hi-C.
+3. **For the manuscript,** report HapCUT2 as the headline accuracy. Present the statistical-phaser numbers
+   as model-consistent only.
+
+### 18d. Breaking the truth circularity (future work, if the project is revisited)
+
+The current truth shares its model with SHAPEIT5, EAGLE2 and RefLinker. These options would give a more
+independent truth, strongest first:
+1. **Trio/pedigree phasing.** The gold standard, but no family data exists for these donors.
+2. **Long-read phasing** (PacBio HiFi / ONT + WhatsHap or HiPhase). Fully independent of population models.
+3. **Strand-seq.** Gives chromosome-length phase directly.
+4. **Beagle 5-phased WGS truth.** The cheap check. It is still statistical, but uses a different model, so agreement between SHAPEIT5 and Beagle
+   would make the statistical-phaser numbers more believable.
+
+Other phasers worth knowing for any follow-up: Beagle 5.x and SHAPEIT4 (statistical, phase-set aware),
+GLIMPSE2 and QUILT (low-coverage, genotype-likelihood based, a natural fit for sparse single-cell data),
+and WhatsHap, HiPhase and Margin (read-based, long-read oriented).
+
+**Status:** the phasing project is **closed** as of 2026-10-05. The next work moves in a new direction.

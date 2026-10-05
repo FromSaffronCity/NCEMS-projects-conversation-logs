@@ -2630,3 +2630,26 @@ backfill scripts are `shell-scripts/taskB_reflinker_backfill.sh` and `taskB_wgst
 **Headline (non-circular, HapCUT2):** snMC ≈ 10.5–11 %, snM3C ≈ 23–26 %, WGS-truth sites ≈ 20.6–21.5 %.
 **RefLinker does not improve switch-error** — it is flat-to-slightly-worse than its statistical seed across
 all donors/callsets, confirming §16c (Hi-C buys block span, not per-pair accuracy).
+
+### 2026-10-05 — Close-out: housekeeping + interpretation of the switch-error results (report §18)
+
+**Housekeeping.** No tmux server was running (only 3 defunct tmux-server zombies, reparented to PID 1,
+harmless and cleared at the next node restart). All Task B outputs had already been moved to the mount on
+2026-10-02 (`data/phaser-comparison-2026-10/`, `tools/prebuilt/linker.fixed`, backfill scripts in
+`shell-scripts/`). Removed the remaining `/tmp` debris: 3 empty `mktemp` files and the stale
+`/tmp/tmux-1000` socket. The mount copies of all 4 log files were byte-identical to GitHub
+(`1cb1f04`), so no sync was needed before this entry.
+
+**Discussion: what the switch-error matrix means** (recorded in report §18):
+- HapCUT2 is the only non-circular measure: snMC ~10–11 %, snM3C ~23–26 %, WGS-truth sites ~21 %.
+  Single-cell methylation reads do phase SNPs. snMC is accurate but short-range. snM3C has chromosome-scale
+  reach, but the Hi-C links are noisy. The ~21 % on the correct WGS-truth positions shows the snM3C penalty comes from
+  Hi-C linkage, not from variant calling. bsgenova is ~2 pp better than naive on snM3C.
+- SHAPEIT5 and EAGLE2 values are a self-consistency floor (they share the truth's model and panel), not
+  independent accuracy. RefLinker (a Hi-C refinement step, not a statistical phaser) does not improve on
+  its seed.
+- Other phasers discussed: Beagle 5.x, SHAPEIT4, GLIMPSE2, QUILT (statistical) and WhatsHap, HiPhase, Margin
+  (read-based). Possible independent truths if revisited: trio > long-read > Strand-seq > a Beagle-phased
+  WGS truth as a cheap model-independence check.
+
+**Project status: phasing work CLOSED (2026-10-05).**
