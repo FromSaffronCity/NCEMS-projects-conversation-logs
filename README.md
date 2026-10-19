@@ -27,8 +27,8 @@ pedigree-phased truth with two independent single-cell Hi-C datasets (Dip-C, 17 
 
 | file | what it is |
 |---|---|
-| [`NA12878-phaser-verification/phaser_verification_report.md`](NA12878-phaser-verification/phaser_verification_report.md) | **Start here.** Status report for the PIs: key findings, design, results (chr1–22 and chrX), notes and next steps |
-| [`NA12878-phaser-verification/figures/`](NA12878-phaser-verification/figures/) | The report's figures: accuracy vs number of LiMCA cells (`fig1_cells_curve.png`) and longest correct segment per chromosome (`fig2_per_chrom_longest_segment.png`) |
+| [`NA12878-phaser-verification/phaser_verification_report.md`](NA12878-phaser-verification/phaser_verification_report.md) | **Start here.** Status report for the PIs (updated 2026-10-19): key findings, method and data, results incl. hybrid / tuning / filtered-read tests (HapCUT2 in progress), next steps |
+| [`NA12878-phaser-verification/figures/`](NA12878-phaser-verification/figures/) | The report's figure: phasing accuracy vs number of LiMCA cells (`fig1_cells_curve.png`) |
 
 The scripts, logs and data of this experiment live on Purdue Anvil
 (`/anvil/projects/x-bio260019/x-aahmed7/phaser-verification/`), not in this repository.
