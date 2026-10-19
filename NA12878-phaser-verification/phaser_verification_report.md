@@ -1,5 +1,5 @@
 # Phaser verification on NA12878: SHAPEIT5 → RefLinker with single-cell Hi-C
-*Status report, 2026-10-19*
+*Status report, 2026-10-19 (HapCUT2 results added)*
 
 ## Key findings
 - **SHAPEIT5 alone is locally accurate but has no chromosome-scale phase:** 0.4% switch error, yet ~45% of het SNPs sit on the wrong haplotype across whole chromosomes.
@@ -8,7 +8,8 @@
   - a **hybrid** post-processing step (keep SHAPEIT5's local phase, take block orientation from RefLinker), which reaches **0.6%** wrong-haplotype SNPs at 220 cells;
   - a **stricter RefLinker flip threshold**.
 - **Removing duplicate and low-quality Hi-C reads does not help**, so the islands come from RefLinker's decisions, not from read noise.
-- **Error-free segment length does not grow beyond SHAPEIT5's** (longest ~11.5 Mb, N50 ~1.3 Mb). The remaining breaks are SHAPEIT5's single-SNP errors, which Hi-C cannot fix. **Read-based phasing (HapCUT2) with WGS reads is being tested to address this (in progress).**
+- **Error-free segment length does not grow beyond SHAPEIT5's** (longest ~11.5 Mb, N50 ~1.3 Mb). The remaining breaks are SHAPEIT5's single-SNP errors, which Hi-C cannot fix.
+- **Read-based patching (HapCUT2, NA12878 WGS ~50×):** HapCUT2 phases 69.2% of het SNPs in small blocks (block-span N50 0.6 kb; switch error within blocks 0.12%). Added to the hybrid (even chromosomes): error-free N50 1.26 → 1.38 Mb (Dip-C) and 1.40 → 1.58 Mb (LiMCA 220); longest error-free segment 11.55 → 13.41 / 11.55 → 13.41 Mb; Hamming 0.0522 → 0.0521 / 0.0058 → 0.0056.
 
 ## Method and data
 | Step | Tool | Input | Output |
@@ -17,7 +18,7 @@
 | 2. Hi-C read processing | `pre-meta` → `bwa mem -5SP` | raw single-cell Hi-C reads | merged BAM per dataset |
 | 3. Hi-C refinement | RefLinker (`extract`, `pop`) | step-1 phasing + BAM | re-oriented phasing of Hi-C-linked SNPs |
 | 4. Hybrid | our script | steps 1 + 3 | SHAPEIT5 phase with RefLinker's block orientation (majority vote over a window of SNPs) |
-| 5. Read-based patching *(in progress)* | HapCUT2 1.3.4 | WGS reads + genotypes | small read-backed blocks merged into step 4 |
+| 5. Read-based patching | HapCUT2 1.3.4 | WGS reads + genotypes | small read-backed blocks merged into step 4 |
 
 - **Truth:** NA12878 pedigree-phased het SNPs (Platinum Genomes 2016-1.0, hg19): 2,083,940 on chr1–22 and 63,598 on chrX, independent of any statistical or Hi-C phasing.
 - **SHAPEIT5 input:** truth het sites with the phase removed (plus hom-alt SNPs), mimicking a WGS genotype call set like the brain donors'. The panel is 1000G phase3 without NA12878 and her relatives (2,501 samples; chrX: 1,269 women). Maps: b37.
@@ -53,9 +54,13 @@ chrX shows the same pattern (Hamming 0.46 → 0.07 with Dip-C; 0.05 → 0.03 wit
 | + RefLinker (default) | 0.064 / 1.03% / 0.41 / 11.5 Mb | 0.019 / 1.25% / 0.37 / 11.6 Mb |
 | + RefLinker (tuned threshold²) | **0.028** / 0.39% / 1.24 / 11.5 Mb | 0.0075 / 0.37% / 1.35 / 11.5 Mb |
 | + RefLinker + hybrid³ | 0.052 / 0.38% / 1.26 / 11.5 Mb | **0.0058** / 0.38% / **1.40** / 11.5 Mb |
-| + RefLinker + hybrid + HapCUT2 | *in progress* | *in progress* |
+| + RefLinker + hybrid + HapCUT2 | 0.0521 / 0.34% / 1.38 / 13.4 Mb | 0.0056 / 0.34% / 1.58 / 13.4 Mb |
 
 Cleaner reads give no gain. About 53–54% of Hi-C alignments were duplicates, and only ~37% of alignments remain after deduplication and MAPQ ≥ 20. Re-running RefLinker on them leaves Hamming essentially unchanged (Dip-C 0.064 → 0.065; LiMCA 220 0.019 → 0.019).
+
+![All configurations, Dip-C](figures/fig3_pipeline_steps_all17.png)
+![All configurations, LiMCA 220](figures/fig3_pipeline_steps_limca_n220.png)
+*Fig. 2. The four metrics for every configuration (even chromosomes, same SNPs per row), Dip-C (top) and LiMCA 220 cells (bottom). Blue: proposed pipeline SHAPEIT5 → RefLinker → hybrid → HapCUT2. Also shown: HapCUT2 merged onto SHAPEIT5 alone and onto default RefLinker.*
 
 ² Flip threshold `-e` −50 (Dip-C) and −100 (LiMCA 220), instead of the README default −10.
 ³ Window of 1,001 (Dip-C) and 101 (LiMCA 220) SNPs. Any window from 3 to 201 SNPs improves on default RefLinker in every dataset.
@@ -71,7 +76,7 @@ Cleaner reads give no gain. About 53–54% of Hi-C alignments were duplicates, a
 ¹ *The two datasets differ in depth, read length, lab and cell clone, so they are independent reference points and are not compared with each other.*
 
 ## Next steps (for discussion)
-1. Finish HapCUT2 and evaluate whether read-based patching lengthens error-free segments.
+1. Decide whether read-based patching (HapCUT2) is worth adding, based on the row above and Fig. 2.
 2. Choose the final pipeline: SHAPEIT5 → RefLinker (default) → hybrid (fixed window) [→ HapCUT2, if it helps].
 3. Brain donors: hg38 panel and maps; bisulfite-aware alignment and masking of the snm3C-seq reads; download the donors' WGS reads if HapCUT2 helps.
 
