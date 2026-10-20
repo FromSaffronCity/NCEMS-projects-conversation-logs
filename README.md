@@ -27,7 +27,7 @@ pedigree-phased truth with two independent single-cell Hi-C datasets (Dip-C, 17 
 
 | file | what it is |
 |---|---|
-| [`NA12878-phaser-verification/phaser_verification_report.md`](NA12878-phaser-verification/phaser_verification_report.md) | **Start here.** Status report for the PIs (updated 2026-10-19): key findings, method and data, results incl. hybrid / tuning / filtered-read tests (HapCUT2 in progress), next steps |
+| [`NA12878-phaser-verification/phaser_verification_report.md`](NA12878-phaser-verification/phaser_verification_report.md) | **Start here.** Status report for the PIs (updated 2026-10-20): summary, key findings, how results are scored, pipeline and data, results (Hi-C baseline; hybrid / tuning / filtered-read / HapCUT2 tests), practical notes, next steps |
 | [`NA12878-phaser-verification/figures/`](NA12878-phaser-verification/figures/) | The report's figures: `fig3_pipeline_steps_all17.png`, `fig3_pipeline_steps_limca_n220.png`, `fig1_cells_curve.png` |
 
 The scripts, logs and data of this experiment live on Purdue Anvil
