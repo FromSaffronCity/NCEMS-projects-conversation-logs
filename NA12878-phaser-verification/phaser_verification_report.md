@@ -29,6 +29,7 @@
 - **Metrics** (vs truth, up to a global haplotype swap):
   - **Hamming error**: fraction of SNPs on the wrong haplotype; chromosome scale; 0.5 = random.
   - **Switch error**: adjacent SNP pairs with the wrong relative phase; local. A single wrongly phased SNP (a *flip*) counts as 2 switches.
+  - **Flip error**: single wrongly phased SNPs per adjacent SNP pair (WhatsHap's "switch/flip decomposition").
   - **Non-flip switch error**: switches excluding flips, i.e. real block breaks, after which a whole stretch is on the wrong haplotype (more severe).
   - **Longest error-free segment** and **error-free N50** (Mb).
   - Verified independently with `whatshap compare` (WhatsHap 2.8): identical switch, flip and Hamming counts in all 66 chromosome × configuration comparisons tested.
@@ -36,12 +37,12 @@
 
 ## Results
 
-**Baseline, chr1–22 (SHAPEIT5 → RefLinker, default settings).** On the same SNPs, SHAPEIT5 alone has Hamming 0.447, switch error 0.40% and non-flip switch error 0.11%.
+**Baseline, chr1–22 (SHAPEIT5 → RefLinker, default settings).** On the same SNPs, SHAPEIT5 alone has Hamming 0.447, switch error 0.38%, flip error 0.13–0.14% and non-flip switch error 0.11%.
 
-| Hi-C data | het SNPs phased by RefLinker | Hamming | switch error | non-flip switch error | error-free N50 |
-|---|---|---|---|---|---|
-| Dip-C, 17 cells | 95.1% | 0.070 | 1.06% | 0.78% | 0.41 Mb |
-| LiMCA, 17 / 50 / 100 / 220 cells | 87.4 / 94.5 / 94.9 / 95.2% | 0.217 / 0.057 / 0.035 / 0.021 | 0.87–1.29% | 0.60–0.83% | 0.36–0.53 Mb |
+| Hi-C data | het SNPs phased by RefLinker | Hamming | switch error | flip error | non-flip switch error | error-free N50 |
+|---|---|---|---|---|---|---|
+| Dip-C, 17 cells | 95.1% | 0.070 | 1.06% | 0.14% | 0.78% | 0.41 Mb |
+| LiMCA, 17 / 50 / 100 / 220 cells | 87.4 / 94.5 / 94.9 / 95.2% | 0.217 / 0.057 / 0.035 / 0.021 | 0.87–1.29% | 0.13–0.28% | 0.60–0.83% | 0.36–0.53 Mb |
 
 chrX shows the same pattern (Hamming 0.46 → 0.07 with Dip-C; 0.05 → 0.03 with 100–220 LiMCA cells). The exception is 17 LiMCA cells, which were too few on chrX (no gain).
 
@@ -50,15 +51,15 @@ chrX shows the same pattern (Hamming 0.46 → 0.07 with Dip-C; 0.05 → 0.03 wit
 
 **Pipeline configurations (even chromosomes; same SNPs in every row).**
 
-| Configuration | Dip-C 17 cells: Hamming / switch / non-flip switch / N50 / longest | LiMCA 220 cells: Hamming / switch / non-flip switch / N50 / longest |
+| Configuration | Dip-C 17 cells: Hamming / switch / flip / non-flip switch / N50 / longest | LiMCA 220 cells: Hamming / switch / flip / non-flip switch / N50 / longest |
 |---|---|---|
-| SHAPEIT5 alone | 0.442 / 0.35% / 0.10% / 1.28 / 11.5 Mb | 0.442 / 0.35% / 0.10% / 1.28 / 11.5 Mb |
-| + RefLinker (default) | 0.064 / 1.03% / 0.76% / 0.41 / 11.5 Mb | 0.019 / 1.25% / 0.70% / 0.37 / 11.6 Mb |
-| + RefLinker (tuned threshold²) | **0.028** / 0.39% / 0.14% / 1.24 / 11.5 Mb | 0.0075 / 0.37% / 0.10% / 1.35 / 11.5 Mb |
-| + RefLinker + hybrid³ | 0.052 / 0.38% / 0.13% / 1.26 / 11.5 Mb | 0.0058 / 0.38% / 0.11% / 1.40 / 11.5 Mb |
-| + RefLinker + hybrid + HapCUT2 | 0.052 / **0.34%** / 0.14% / **1.38** / **13.4** Mb | **0.0056** / **0.34%** / 0.11% / **1.58** / **13.4** Mb |
+| SHAPEIT5 alone | 0.442 / 0.35% / 0.13% / 0.10% / 1.28 / 11.5 Mb | 0.442 / 0.35% / 0.13% / 0.10% / 1.28 / 11.5 Mb |
+| + RefLinker (default) | 0.064 / 1.03% / 0.13% / 0.76% / 0.41 / 11.5 Mb | 0.019 / 1.25% / 0.27% / 0.70% / 0.37 / 11.6 Mb |
+| + RefLinker (tuned threshold²) | **0.028** / 0.39% / 0.13% / 0.14% / 1.24 / 11.5 Mb | 0.0075 / 0.37% / 0.14% / 0.10% / 1.35 / 11.5 Mb |
+| + RefLinker + hybrid³ | 0.052 / 0.38% / 0.13% / 0.13% / 1.26 / 11.5 Mb | 0.0058 / 0.38% / 0.14% / 0.11% / 1.40 / 11.5 Mb |
+| + RefLinker + hybrid + HapCUT2 | 0.052 / **0.34%** / **0.10%** / 0.14% / **1.38** / **13.4** Mb | **0.0056** / **0.34%** / **0.11%** / 0.11% / **1.58** / **13.4** Mb |
 
-Non-flip switches (real block breaks) stay at ~0.1% in every step. RefLinker re-orients the long blocks between SHAPEIT5's breaks, which is what drops Hamming. But it rarely removes the breaks themselves: the hybrid keeps 741 of SHAPEIT5's 995 non-flip switches (LiMCA 220, even chromosomes) and adds new ones a median of 5 SNPs (~21 kb) away. Long-range errors thus become short misphased stretches.
+Default RefLinker's extra errors are mostly short wrong stretches of ≥2 SNPs, so they count as non-flip switches (0.70–0.76%). The hybrid removes them. HapCUT2 lowers the flip rate (0.13–0.14% → 0.10–0.11%), which accounts for its switch-error gain. Otherwise, non-flip switches (real block breaks) stay at ~0.1%. RefLinker re-orients the long blocks between SHAPEIT5's breaks, which is what drops Hamming. But it rarely removes the breaks themselves: the hybrid keeps 741 of SHAPEIT5's 995 non-flip switches (LiMCA 220, even chromosomes) and adds new ones a median of 5 SNPs (~21 kb) away. Long-range errors thus become short misphased stretches.
 
 Cleaner reads give no gain. About 53–54% of Hi-C alignments were duplicates, and only ~37% of alignments remain after deduplication and MAPQ ≥ 20. Re-running RefLinker on them leaves Hamming essentially unchanged (Dip-C 0.064 → 0.065; LiMCA 220 0.019 → 0.019).
 
