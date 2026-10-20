@@ -32,17 +32,17 @@
   - **Flip error**: single wrongly phased SNPs per adjacent SNP pair (WhatsHap's "switch/flip decomposition").
   - **Non-flip switch error**: switches excluding flips, i.e. real block breaks, after which a whole stretch is on the wrong haplotype (more severe).
   - **Longest error-free segment** and **error-free N50** (Mb).
-  - Verified independently with `whatshap compare` (WhatsHap 2.8): identical switch, flip and Hamming counts in all 66 chromosome × configuration comparisons tested.
+  - Verified independently with `whatshap compare` (WhatsHap 2.8): it reproduces every switch, flip, non-flip switch and Hamming rate in both results tables, on the same SNPs (all 20 rows; differences ≤ 0.00001, from rounding only).
 - **Fair testing:** the settings of the hybrid (window) and of tuning (threshold) are chosen on odd chromosomes. Results are reported on even chromosomes.
 
 ## Results
 
-**Baseline, chr1–22 (SHAPEIT5 → RefLinker, default settings).** On the same SNPs, SHAPEIT5 alone has Hamming 0.447, switch error 0.38%, flip error 0.13–0.14% and non-flip switch error 0.11%.
+**Baseline, chr1–22 (SHAPEIT5 → RefLinker, default settings).** On the same SNPs, SHAPEIT5 alone has Hamming 0.446–0.447, switch error 0.38%, flip error 0.13–0.14% and non-flip switch error 0.11%.
 
 | Hi-C data | het SNPs phased by RefLinker | Hamming | switch error | flip error | non-flip switch error | error-free N50 |
 |---|---|---|---|---|---|---|
 | Dip-C, 17 cells | 95.1% | 0.070 | 1.06% | 0.14% | 0.78% | 0.41 Mb |
-| LiMCA, 17 / 50 / 100 / 220 cells | 87.4 / 94.5 / 94.9 / 95.2% | 0.217 / 0.057 / 0.035 / 0.021 | 0.87–1.29% | 0.13–0.28% | 0.60–0.83% | 0.36–0.53 Mb |
+| LiMCA, 17 / 50 / 100 / 220 cells | 87.4 / 94.5 / 94.9 / 95.2% | 0.217 / 0.057 / 0.035 / 0.021 | 0.87–1.29% | 0.13–0.28% | 0.61–0.83% | 0.36–0.53 Mb |
 
 chrX shows the same pattern (Hamming 0.46 → 0.07 with Dip-C; 0.05 → 0.03 with 100–220 LiMCA cells). The exception is 17 LiMCA cells, which were too few on chrX (no gain).
 
