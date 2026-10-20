@@ -30,6 +30,7 @@
   - **Hamming error**: fraction of SNPs on the wrong haplotype; chromosome scale; 0.5 = random.
   - **Switch error**: adjacent SNP pairs with the wrong relative phase; local.
   - **Longest error-free segment** and **error-free N50** (Mb).
+  - Verified independently with `whatshap compare` (WhatsHap 2.8): identical switch, flip and Hamming counts in all 66 chromosome × configuration comparisons tested.
 - **Fair testing:** the settings of the hybrid (window) and of tuning (threshold) are chosen on odd chromosomes. Results are reported on even chromosomes.
 
 ## Results
