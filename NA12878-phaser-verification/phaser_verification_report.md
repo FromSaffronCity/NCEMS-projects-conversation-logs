@@ -1,5 +1,5 @@
 # Phaser verification on NA12878: SHAPEIT5 → RefLinker with single-cell Hi-C
-*Status report, 2026-10-20 (HapCUT2 results added; all rates re-verified with WhatsHap)*
+*Status report, 2026-10-23 (added: SNPs without Hi-C link kept via nearest anchor, 4.3; confidence scores, 4.4)*
 
 **In short.** We phase NA12878's het SNPs the way we plan to phase the brain donors, and score the result against her pedigree-phased truth.
 - SHAPEIT5 gets the local phase right but not the chromosome-scale phase.
@@ -25,6 +25,12 @@ Proposed pipeline: **SHAPEIT5 → RefLinker (default) → hybrid → HapCUT2**.
      - error-free N50 1.26 → 1.38 Mb (Dip-C) and 1.40 → 1.58 Mb (LiMCA 220);
      - longest error-free segment 11.55 → 13.41 Mb in both;
      - Hamming 0.0522 → 0.0521 (Dip-C) and 0.0058 → 0.0056 (LiMCA 220).
+7. **SNPs without a Hi-C link can be kept** (4.3). Orienting them like their nearest Hi-C-anchored SNP raises coverage
+   from ~95% to 96.1% of truth hets, at a negligible cost: added SNPs have Hamming 0.04–0.08 instead of 0.41.
+8. **Confidence scores help a little; pruning helps more** (4.4).
+   - RefLinker's switch energy and HapCUT2's SNP quality lift N50 by 2–3% without dropping SNPs.
+   - Leaving the least-supported SNPs unphased (switchE < 2) gives N50 2.3–2.6 Mb and longest error-free segments of
+     24–26 Mb, keeping 76% (Dip-C) / 89% (LiMCA 220) of SNPs.
 
 ## 2. How the results are scored
 All metrics compare a phasing with the truth, allowing one global swap of the two haplotypes. Only het SNPs present in both the phasing and the truth are scored. Each chromosome counts as one block.
@@ -107,21 +113,82 @@ Each cell gives Hamming / switch / flip / non-flip switch / error-free N50 / lon
 ![All configurations, LiMCA 220](figures/fig3_pipeline_steps_limca_n220.png)
 *Fig. 2. The four metrics for every configuration (even chromosomes, same SNPs per row), Dip-C (top) and LiMCA 220 cells (bottom). Blue: proposed pipeline SHAPEIT5 → RefLinker → hybrid → HapCUT2. Also shown: HapCUT2 merged onto SHAPEIT5 alone and onto default RefLinker.*
 
+### 4.3 Keeping the SNPs that RefLinker did not link (nearest-linked-SNP orientation)
+**What it does:**
+- Until now, the output contained only RefLinker's scaffold SNPs. The ~1% of SHAPEIT5 SNPs without a usable Hi-C link
+  were dropped.
+- The extension keeps them. Each one keeps SHAPEIT5's phase, but is flipped if the hybrid flipped the nearest scaffold SNP
+  (ties go to the right-hand neighbour). So its local phase comes from SHAPEIT5 and its orientation from its nearest Hi-C
+  anchor. HapCUT2 blocks are then merged as before.
+- We used it in the brain pilot; this is its test against the truth (even chromosomes).
+
+| Dataset | SNP set | truth hets phased (chr1–22) | Hamming | switch / flip / non-flip | N50 | longest |
+|---|---|---|---|---|---|---|
+| Dip-C 17 | scaffold only (pipeline so far) | 95.05% | 0.0521 | 0.34 / 0.10 / 0.14% | 1.38 Mb | 13.4 Mb |
+| Dip-C 17 | all SNPs (extension) | **96.06%** | 0.0523 | 0.35 / 0.11 / 0.14% | 1.35 Mb | 13.4 Mb |
+| LiMCA 220 | scaffold only (pipeline so far) | 95.18% | 0.0056 | 0.34 / 0.11 / 0.11% | 1.58 Mb | 13.4 Mb |
+| LiMCA 220 | all SNPs (extension) | **96.06%** | 0.0059 | 0.35 / 0.12 / 0.12% | 1.56 Mb | 13.4 Mb |
+
+- **On the added SNPs alone** (10,682 Dip-C / 9,303 LiMCA on even chromosomes), Hamming falls from 0.42 / 0.41
+  (SHAPEIT5 as is) to 0.077 / 0.035. So the nearest-anchor orientation works.
+- The added SNPs are less accurate than scaffold SNPs, so overall accuracy dips very slightly.
+- **Verdict:** +1% coverage (all SHAPEIT5 SNPs) for a negligible cost. It is kept in the brain pipeline.
+
+### 4.4 Using confidence scores (RefLinker energy, HapCUT2 quality)
+**Scores:**
+- **RefLinker `switchE`:** a per-SNP energy for "a haplotype switch here". Low or negative means weak Hi-C support.
+  - On odd chromosomes, SNPs with switchE < 0 are on the wrong haplotype 16–18% of the time, vs 2.0% (LiMCA 220) /
+    7.5% (Dip-C) for switchE > 0.
+  - The other RefLinker score, `deltaE`, is always 0 in `pop` output, so it is not usable.
+- **HapCUT2:** per-SNP phred quality (0–100).
+
+**How the refinement works (no SNP removed):**
+- (R1) In the hybrid's window vote, only RefLinker SNPs with switchE ≥ t vote. Every scaffold SNP is then oriented by
+  the nearest trusted vote.
+- (R2) Only HapCUT2 SNPs with quality ≥ Q are merged.
+- t and Q are chosen on odd chromosomes (lowest switch error with Hamming no worse than the pipeline) and tested on even
+  chromosomes:
+  - Dip-C: no switchE filter, Q ≥ 30.
+  - LiMCA 220: switchE ≥ 0, Q ≥ 30.
+
+**Pruning (SNPs removed):** after refinement, SNPs with switchE < p are left unphased, unless HapCUT2 phased them with
+quality ≥ 30. Metrics are on the SNPs kept.
+
+| Dataset | Configuration | SNPs kept | Hamming | switch / flip / non-flip | N50 | longest |
+|---|---|---|---|---|---|---|
+| Dip-C 17 | pipeline (4.2) | 100% | 0.0521 | 0.340 / 0.102 / 0.136% | 1.38 Mb | 13.4 Mb |
+| Dip-C 17 | + confidence refinement | 100% | 0.0520 | 0.337 / 0.101 / 0.135% | 1.42 Mb | 13.4 Mb |
+| Dip-C 17 | + pruning switchE < 0 | 99.1% | 0.0518 | 0.323 / 0.094 / 0.136% | 1.48 Mb | 13.4 Mb |
+| Dip-C 17 | + pruning switchE < 2 | 76.3% | 0.0511 | 0.264 / 0.051 / 0.162% | 2.29 Mb | 23.6 Mb |
+| Dip-C 17 | + pruning switchE < 6 | 71.5% | 0.0510 | 0.257 / 0.043 / 0.170% | 2.66 Mb | 23.6 Mb |
+| LiMCA 220 | pipeline (4.2) | 100% | 0.0056 | 0.337 / 0.113 / 0.112% | 1.58 Mb | 13.4 Mb |
+| LiMCA 220 | + confidence refinement | 100% | 0.0056 | 0.331 / 0.110 / 0.111% | 1.62 Mb | 13.4 Mb |
+| LiMCA 220 | + pruning switchE < 0 | 98.8% | 0.0052 | 0.292 / 0.092 / 0.107% | 1.78 Mb | 13.8 Mb |
+| LiMCA 220 | + pruning switchE < 2 | 89.4% | 0.0044 | 0.240 / 0.067 / 0.106% | 2.57 Mb | 25.6 Mb |
+| LiMCA 220 | + pruning switchE < 6 | 81.3% | 0.0041 | 0.225 / 0.061 / 0.104% | 3.07 Mb | 25.6 Mb |
+
+- **Refinement alone gives small gains:** N50 +2–3% (1.38 → 1.42; 1.58 → 1.62 Mb), switch error −1 to −2%.
+- **Pruning trades coverage for accuracy:**
+  - Dropping the ~1% of SNPs with switchE < 0 lifts N50 by 7–12% vs the pipeline.
+  - Dropping more (switchE < 2) roughly doubles the longest error-free segment (13.4 → 24–26 Mb) and raises N50 to
+    2.3–2.6 Mb, at a cost of 11% (LiMCA 220) to 24% (Dip-C) of SNPs.
+  - It mostly removes flips. Real block breaks (non-flip) barely change, and rise slightly for Dip-C, because each break
+    is now spread over fewer SNP pairs.
+- The pruning level is a choice to make with the users of the haplotypes (more SNPs vs longer error-free stretches).
+
 ## 5. Practical notes
 - **RefLinker** needed three memory-safety patches to run on sparse single-cell Hi-C (hard-clipped reads; chromosomes with few linked SNPs). They are included in our build.
 - **Transfer to brain data:**
   - **Hybrid over tuning:** tuned thresholds are data-specific (the best value grew from −20 to −100 with cell number), and there is no truth to tune on for the donors. The hybrid is more robust: a fixed window of ~100–200 SNPs worked everywhere.
   - **Bisulfite reads:** the donors' snm3C-seq Hi-C reads are bisulfite-converted. Before RefLinker they need bisulfite-aware alignment (e.g. Bismark), plus masking of conversion-ambiguous bases using the donors' WGS het SNPs.
-- **SNPs not phased:** 3.9% of truth het SNPs are absent from the panel, so SHAPEIT5 can't phase them. Of the rest, ~1% have no Hi-C link.
+- **SNPs not phased:** 3.9% of truth het SNPs are absent from the panel, so SHAPEIT5 can't phase them. Of the rest, ~1% have no Hi-C link; they are now kept (4.3).
 - **Cost:** ~4.2k core-hours so far. RefLinker needs up to ~52 GB of memory per large chromosome at 220 cells.
 
 ## 6. Next steps (for discussion)
-1. Decide whether read-based patching (HapCUT2) is worth adding, based on the last row of the table in 4.2 and Fig. 2.
-2. Choose the final pipeline: SHAPEIT5 → RefLinker (default) → hybrid (fixed window) [→ HapCUT2, if it helps].
-3. Brain donors:
-   - hg38 panel and maps;
-   - bisulfite-aware alignment and masking of the snm3C-seq reads;
-   - download the donors' WGS reads if HapCUT2 helps.
+1. Final pipeline: SHAPEIT5 → RefLinker (default) → hybrid → HapCUT2, keeping unlinked SNPs (4.3), with confidence
+   refinement (4.4). The pruning level is still to be decided with the haplotype users.
+2. Brain donors: the donor-1 pilot (100 snM3C-seq cells; bisulfite-aware reads and masking) is done, and is reported
+   separately. Next: donors 2 and 3, and the donors' WGS reads for HapCUT2.
 
 ¹ *The two datasets differ in depth, read length, lab and cell clone, so they are independent reference points and are not compared with each other.*
 
