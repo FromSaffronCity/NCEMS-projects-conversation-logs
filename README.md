@@ -32,3 +32,15 @@ pedigree-phased truth with two independent single-cell Hi-C datasets (Dip-C, 17 
 
 The scripts, logs and data of this experiment live on Purdue Anvil
 (`/anvil/projects/x-bio260019/x-aahmed7/phaser-verification/`), not in this repository.
+
+### 3. Phaser pipeline guide (2026-11-10)
+Step-by-step description of the phaser pipeline used for the human brain donors: SHAPEIT5 → RefLinker → hybrid refiner,
+HapCUT2 in parallel, then combiner and pruner. For each step it gives the inputs, the command-line settings, the outputs,
+and how our own steps work, with toy examples.
+
+| file | what it is |
+|---|---|
+| [`phaser-pipeline-guide/phaser_pipeline_guide.md`](phaser-pipeline-guide/phaser_pipeline_guide.md) | **The guide** |
+| [`phaser-pipeline-guide/figures/phaser_pipeline.png`](phaser-pipeline-guide/figures/phaser_pipeline.png) | Pipeline overview figure |
+
+The code and data of the brain phasing live on Purdue Anvil (`/anvil/projects/x-bio260019/x-aahmed7/human-brain-phasing/`).
