@@ -44,3 +44,14 @@ and how our own steps work, with toy examples.
 | [`phaser-pipeline-guide/figures/phaser_pipeline.png`](phaser-pipeline-guide/figures/phaser_pipeline.png) | Pipeline overview figure |
 
 The code and data of the brain phasing live on Purdue Anvil (`/anvil/projects/x-bio260019/x-aahmed7/human-brain-phasing/`).
+
+### 4. Human brain phasing (2026-10-22 → ongoing)
+Phasing of the Tian et al. 2023 donors' WGS het SNPs with the pipeline above, using the donors' own snM3C-seq cells, and
+labelling snM3C contacts with the chromosome copy for ChromoGen. Donor 1 is complete (4 / 100 / 2,370 cells, with and
+without pruning); donors 1, 2 and 4 with ~5,000 cells are in progress.
+
+| file | what it is |
+|---|---|
+| [`human-brain-phasing/brain_phasing_progress_report.md`](human-brain-phasing/brain_phasing_progress_report.md) | **Progress report** (2026-11-13): setup, all donor-1 numbers, checks, next steps |
+
+Code, logs and data on Purdue Anvil: `/anvil/projects/x-bio260019/x-aahmed7/human-brain-phasing/`.
