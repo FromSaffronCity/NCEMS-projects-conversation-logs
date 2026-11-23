@@ -1,5 +1,6 @@
 # Phaser verification on NA12878: SHAPEIT5 → RefLinker with single-cell Hi-C
-*Status report, 2026-10-23 (added: SNPs without Hi-C link kept via nearest anchor, 4.3; confidence scores, 4.4)*
+*Status report, updated 2026-11-23 (added 4.5: contact-label accuracy vs truth, HapCUT2 input, read pooling, an alternative
+pipeline, and NA12878 contact files). Earlier: 4.3 nearest-anchor SNPs, 4.4 confidence scores (2026-10-23).*
 
 **In short.** We phase NA12878's het SNPs the way we plan to phase the brain donors, and score the result against her pedigree-phased truth.
 - SHAPEIT5 gets the local phase right but not the chromosome-scale phase.
@@ -31,6 +32,14 @@ Proposed pipeline: **SHAPEIT5 → RefLinker (default) → hybrid → HapCUT2**.
    - RefLinker's switch energy and HapCUT2's SNP quality lift N50 by 2–3% without dropping SNPs.
    - Leaving the least-supported SNPs unphased (switchE < 2) gives N50 2.3–2.6 Mb and longest error-free segments of
      24–26 Mb, keeping 76% (Dip-C) / 89% (LiMCA 220) of SNPs.
+9. **Contact labels from the current pipeline are almost always right** (4.5). Labelling each contact end from SNPs on
+   its own read, 96.7% (Dip-C 17) and 99.5% (LiMCA 220) of labelled ends get the same parent as with the truth phasing.
+10. **HapCUT2 must run on WGS reads, not on Hi-C reads** (4.5). Hi-C-mode HapCUT2 raised the LiMCA 220 Hamming error from
+    0.006 to 0.042 and cut contact-end accuracy from 99.5% to 95.9%.
+11. **Pooling reads from many cells beats using fewer whole cells** (4.5, a test suggested by Joe). With equal data,
+    half of the reads of all 17 Dip-C cells gives 94.9% end accuracy; 8 whole cells give 81.2%.
+12. **An alternative order (HapCUT2 → SHAPEIT4 → RefLinker) is not better overall** (4.5): equal on LiMCA 220, worse on
+    Dip-C 17. We keep the current pipeline.
 
 ## 2. How the results are scored
 All metrics compare a phasing with the truth, allowing one global swap of the two haplotypes. Only het SNPs present in both the phasing and the truth are scored. Each chromosome counts as one block.
@@ -176,6 +185,73 @@ quality ≥ 30. Metrics are on the SNPs kept.
     is now spread over fewer SNP pairs.
 - The pruning level is a choice to make with the users of the haplotypes (more SNPs vs longer error-free stretches).
 
+### 4.5 Contact labels and November tests (2026-11-16 to 11-23)
+**Current pipeline:** SHAPEIT5 → RefLinker → hybrid refiner → HapCUT2 on NA12878 WGS reads (quality ≥ 30) → combine →
+pruning (switchE < 2 unless HapCUT2 quality ≥ 30). This is the brain pipeline, except that the brain runs used HapCUT2 on
+snM3C (Hi-C) reads.
+
+**Contact-label test.** This is what the brain contact files need. In each cell, every contact end is labelled from the
+het SNPs on its own read: read letters matching haplotype 1 → label 0, haplotype 2 → label 1, mixed or none → unlabelled.
+The same reads are labelled once with the pipeline's phasing and once with the truth. End accuracy = share of ends,
+labelled by both, that get the same parent (the pipeline's haplotypes are matched to the truth per chromosome).
+
+| Phasing (all chromosomes) | Dip-C 17: end accuracy | LiMCA 220: end accuracy | Hamming (Dip-C / LiMCA) |
+|---|---|---|---|
+| SHAPEIT5 alone | 55.4% | 55.4% | 0.447 / 0.447 |
+| pipeline with HapCUT2 on Hi-C reads (brain version) | 96.5% | 95.9% | 0.037 / 0.042 |
+| pipeline without HapCUT2 | 96.7% | 99.46% | 0.036 / 0.0058 |
+| **current pipeline (HapCUT2 on WGS reads)** | **96.7%** | **99.46%** | **0.036 / 0.0060** |
+| alternative: HapCUT2 → SHAPEIT4 → RefLinker | 92.2% | 99.51% | 0.077 / 0.0053 |
+
+- Ends labelled: 9.3% (Dip-C) and 6.2% (LiMCA) with any phasing, including the truth (9.7% / 6.5%). The low share comes
+  from the data (few reads cover a het SNP), not from the phasing.
+- **Ceiling of the truth-free check.** Even with the truth, only 95.6–95.8% of same-chromosome contacts > 10 Mb apart have
+  the same label on both ends (real contacts between the two copies, plus read errors). The current pipeline reaches
+  94.9% (Dip-C) and 95.7% (LiMCA) there.
+- **HapCUT2 on Hi-C reads hurts.** It adds wrong-haplotype blocks: LiMCA 220 Hamming 0.0058 → 0.0417, switch error 0.34% →
+  1.99%. On WGS reads it is neutral to slightly positive.
+- **Alternative pipeline.** HapCUT2 blocks (WGS) are fed to SHAPEIT4 4.2.2 as phase sets (`--use-PS 0.0001 --sequencing`;
+  SHAPEIT5 has no such option), then RefLinker, refiner, combine and pruning. SHAPEIT4 alone has a lower switch error
+  than SHAPEIT5 (0.27% vs 0.39%), but after RefLinker the result is only equal (LiMCA 220) or worse (Dip-C 17: Hamming
+  0.077 vs 0.036; end accuracy 92.2% vs 96.7%).
+
+**Read pooling (Joe's suggestion), Dip-C, equal amounts of data, current pipeline:**
+
+| Input | Hamming | contact-end accuracy |
+|---|---|---|
+| 8 whole cells | 0.193 | 81.2% |
+| 50% of the read pairs of all 17 cells | 0.053 | 94.9% |
+| all 17 cells (for reference) | 0.036 | 96.7% |
+
+- Pooling is much better. We have not separated why: more independent cells give more distinct 3D links, and halving
+  the reads mostly removes repeated contacts.
+
+**More cells help, mostly up to ~50** (LiMCA, full pipeline at each cell count, even chromosomes; figure 3):
+
+| Cells | Hamming | switch | longest error-free | SNPs kept after pruning |
+|---|---|---|---|---|
+| 17 | 19.76% | 0.43% | 12.0 Mb | 73% |
+| 50 | 2.09% | 0.29% | 23.6 Mb | 78% |
+| 100 | 0.77% | 0.25% | 23.6 Mb | 83% |
+| 220 | 0.44% | 0.24% | 25.6 Mb | 89% |
+
+**NA12878 contact files** (same h5 layout as the brain contact files; hickit recipe on our alignments, hg19):
+
+| File | Cells | Contacts | Ends phased |
+|---|---|---|---|
+| `contacts_truth/dipc17_truth_phased.h5` (truth phasing) | 17 | 29.3 M | 8.29% |
+| `contacts_truth/limca220_truth_phased.h5` (truth phasing) | 220 | 348.9 M | 5.70% |
+| `contacts_published/dipc14_published.h5` (authors' files; 3 cells not released) | 14 | – | – |
+| `contacts_published/limca220_published.h5` (authors' files, hg38) | 220 | – | – |
+| `contacts_pipeline/{dipc17,limca220}_pipeline_phased.h5` (current pipeline) | 17 / 220 | in progress | – |
+
+- Checks: each file is identical to its per-cell source files. With truth phasing, contacts with both ends labelled
+  carry the same label 99.4–99.6% of the time below 1 Mb, and 95.6–96.1% beyond 10 Mb.
+- Compared with the authors' own Dip-C labels on the same contacts, 99.99% of 2.7 M ends agree. The 223 disagreements
+  are scattered (no locus recurs across cells), consistent with slightly different SNP lists and reads whose SNPs conflict.
+- In the pipeline-phased files, labels 0/1 are the pipeline's haplotypes 1/2. Which haplotype comes first is arbitrary
+  per chromosome, as in the brain files, so 0 does not necessarily mean paternal. chr1–22 only.
+
 ## 5. Practical notes
 - **RefLinker** needed three memory-safety patches to run on sparse single-cell Hi-C (hard-clipped reads; chromosomes with few linked SNPs). They are included in our build.
 - **Transfer to brain data:**
@@ -185,10 +261,12 @@ quality ≥ 30. Metrics are on the SNPs kept.
 - **Cost:** ~4.2k core-hours so far. RefLinker needs up to ~52 GB of memory per large chromosome at 220 cells.
 
 ## 6. Next steps (for discussion)
-1. Final pipeline: SHAPEIT5 → RefLinker (default) → hybrid → HapCUT2, keeping unlinked SNPs (4.3), with confidence
-   refinement (4.4). The pruning level is still to be decided with the haplotype users.
+1. Final pipeline: SHAPEIT5 → RefLinker (default) → hybrid → HapCUT2 **on WGS reads**, keeping unlinked SNPs (4.3), with
+   confidence refinement (4.4) and pruning. The pruning level is still to be decided with the haplotype users. A second,
+   independent phaser for cross-checking is under discussion.
 2. Brain donors: the donor-1 pilot (100 snM3C-seq cells; bisulfite-aware reads and masking) is done, and is reported
-   separately. Next: donors 2 and 3, and the donors' WGS reads for HapCUT2.
+   separately. Next: all snM3C cells of the three donors (download running), and the donors' WGS reads for HapCUT2
+   (no longer at the original Salk location; asking the authors).
 
 ¹ *The two datasets differ in depth, read length, lab and cell clone, so they are independent reference points and are not compared with each other.*
 

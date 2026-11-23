@@ -1,5 +1,5 @@
 # Phasing the human brain donors: progress report
-*2026-11-13 · data: Tian et al. 2023 snM3C-seq + donor WGS · code and logs: Anvil `x-aahmed7/human-brain-phasing/`*
+*2026-11-13, updated 2026-11-23 (see "Update 2026-11-23" below) · data: Tian et al. 2023 snM3C-seq + donor WGS · code and logs: Anvil `x-aahmed7/human-brain-phasing/`*
 
 ## In short
 - **Goal:** phase each donor's WGS het SNPs, then label every snM3C-seq contact end with the chromosome copy it came from
@@ -18,6 +18,29 @@
   come only from reads that cover a het SNP, so **phasing accuracy is what we can improve.**
 - **In progress:** donors 1, 2 and 4 with ~5,000 cells each, then labelling two new contact files (350 cells). Currently
   blocked by the exhausted Slurm allocation.
+
+## Update 2026-11-23
+- **~5,000 cells per donor: done for all three donors** (finished 11-14, pruning cut-off switchE < 0). Held-out check,
+  20 cells per donor, same-label share 0.1–1 / 1–10 / > 10 Mb:
+
+  | Donor | cells | SHAPEIT5 | 5,000 cells, pruned | SNPs kept |
+  |---|---|---|---|---|
+  | H1930001 | 4,808 | 79 / 57 / 49% | 97.7 / 97.0 / 88.6% | 97.7% |
+  | H1930002 | 5,000 | 82 / 57 / 49% | 99.0 / 97.4 / 89.8% | 98.1% |
+  | H1930004 | 4,986 | 83 / 60 / 50% | 98.1 / 96.1 / 90.4% | 97.7% |
+
+- **Contact files labelled:** x-tzahin's `mtg50.h5` (200 cells) and `pilot_v5/original.h5` (150 cells), each cell with
+  its own donor's phasing → `data/contacts/mtg50_phased.h5`, `data/contacts/pilot_v5_original_phased.h5`.
+- **HapCUT2 should use WGS reads, not snM3C reads.** On NA12878 (truth known), Hi-C-mode HapCUT2 lowered contact-label
+  accuracy from 99.5% to 95.9%. On brain data, switching it off is as good or better (donor 1, > 10 Mb: 88.7 → 90.5%).
+  The donors' WGS reads are no longer at the Salk FTP location; we are asking the authors.
+- **NA12878 contact-label test** (details in the NA12878 report, 4.5): with HapCUT2 on WGS reads, 96.7% (Dip-C 17 cells)
+  and 99.5% (LiMCA 220 cells) of labelled contact ends get the correct parent.
+- **All snM3C cells (PI and Joe's request): downloading.** 128,906 cells in total; as of 11-23, 4–5 of ~44 batches of
+  1,000 cells per donor are done. NeMO drops 25–30% of transfers; since 11-23 interrupted transfers resume (tested to give
+  byte-identical files) and failed cells are retried until processed. Estimated several more weeks.
+- **Joe's read-pooling idea** was tested on NA12878 Dip-C instead of brain data: pooling reads from all cells phases much
+  better than using fewer whole cells (contact-end accuracy 94.9% vs 81.2% with equal data).
 
 ## 1. Data and setup
 - **Donor 1 WGS** (GATK, hg38): 1,927,881 het + 1,356,652 hom-alt SNPs (PASS, biallelic, chr1–22).
@@ -124,7 +147,7 @@ confidence-guided (unpruned) variants:
   72–82% accuracy. It is **not used**; too few ends are labelled to start with.
 - **WGS genotypes can't replace bisulfite masking:** on a converted strand, an unmethylated C and a real T both read as T.
 
-## 6. Ongoing and next
+## 6. Ongoing and next (as of 2026-11-13; see "Update 2026-11-23" above for the current state)
 - **~5,000 cells per donor, for donors 1, 2 and 4** (pruning cut-off 0), then labelling two new contact files: x-tzahin's
   `mtg50.h5` (200 cells: 100 donor 1, 100 donor 2) and `pilot_v5/original.h5` (150 cells: 51 / 52 / 47).
 
