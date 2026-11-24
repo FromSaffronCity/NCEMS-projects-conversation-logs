@@ -245,6 +245,34 @@ labelled by both, that get the same parent (the pipeline's haplotypes are matche
 | `contacts_published/limca220_published.h5` (authors' files, hg38) | 220 | – | – |
 | `contacts_pipeline/{dipc17,limca220}_pipeline_phased.h5` (current pipeline) | 17 / 220 | in progress | – |
 
+**Contact-file numbers** (`results/contact_files/contact_file_stats.tsv`, `contact_file_agreement.tsv`;
+`scripts/python/contact_file_stats.py`):
+
+| File | Cells | Contacts | Ends phased | Contacts with ≥ 1 phased end |
+|---|---|---|---|---|
+| Dip-C, truth-phased | 17 | 29,257,690 | 8.29% | 15.78% |
+| Dip-C, pipeline-phased | 17 | 29,257,690 | 7.77% | 14.80% |
+| Dip-C, authors' published | 14 | 21,097,643 | 7.84% | 14.97% |
+| LiMCA, truth-phased | 220 | 348,860,864 | 5.70% | 10.94% |
+| LiMCA, pipeline-phased | 220 | 348,860,864 | 5.35% | 10.27% |
+| LiMCA, authors' published (hg38) | 220 | 228,611,480 | 6.01% | 11.53% |
+
+Agreement on contact ends labelled in both files (same cell, same contact):
+
+| Comparison | Ends compared | Agreement |
+|---|---|---|
+| Dip-C: pipeline vs truth | 4.55 M | **96.55%** |
+| LiMCA: pipeline vs truth | 37.31 M | **99.44%** |
+| Dip-C: truth vs authors' published (14 cells) | 2.71 M | **99.992%** |
+| LiMCA: truth vs authors' published (lifted hg38 → hg19; 65% of contacts matched) | 25.34 M | **99.999%** |
+
+- Pipeline labels are the pipeline's haplotype 1/2 (order arbitrary per chromosome), so they are matched to the truth per
+  chromosome before counting. The truth's own order is paternal/maternal.
+- The Dip-C authors' labels use the same order as the truth on every chromosome (0 = paternal). The LiMCA authors' labels
+  use the reverse order on 15 of 23 chromosomes, so their 0/1 is not consistently paternal/maternal. Matched per
+  chromosome, they agree with the truth 99.999%.
+- The authors' LiMCA files contain fewer contacts (229 M vs 349 M), probably due to stricter filtering in their processing.
+
 - Checks: each file is identical to its per-cell source files. With truth phasing, contacts with both ends labelled
   carry the same label 99.4–99.6% of the time below 1 Mb, and 95.6–96.1% beyond 10 Mb.
 - Compared with the authors' own Dip-C labels on the same contacts, 99.99% of 2.7 M ends agree. The 223 disagreements
